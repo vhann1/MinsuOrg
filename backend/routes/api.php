@@ -32,6 +32,8 @@ Route::middleware('web')->group(function () {
 });
 
 Route::post('/login', [AuthController::class, 'login']);
+// Add this to your public routes in api.php
+Route::post('/register', [AuthController::class, 'register']);
 
 // Protected routes
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -85,6 +87,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/organization', [OrganizationController::class, 'update']);
     Route::get('/organization/stats', [OrganizationController::class, 'getOrganizationStats']);
 });
+
+
 
 // Fallback
 Route::fallback(function () {

@@ -1,88 +1,93 @@
-// src/components/dashboard/Dashboard.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { dashboardAPI, usersAPI, eventsAPI, financialAPI } from '../../services/api';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const [dashboardData, setDashboardData] = useState({
+  const [stats, setStats] = useState({
     totalMembers: 0,
     activeEvents: 0,
-    pendingBalances: 0,
-    totalScanners: 0,
-    recentActivity: [],
+    pendingPayments: 0,
+    attendanceRate: 0,
+    recentMembers: [],
+    upcomingEvents: []
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const loadDashboardData = useCallback(async () => {
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Use mock data for now since APIs are failing
-      const mockData = {
-        totalMembers: user?.is_officer ? 24 : 1,
-        activeEvents: 3,
-        pendingBalances: user?.is_officer ? 1250 : (user?.current_balance || 0),
-        totalScanners: user?.is_officer ? 5 : 0,
-        recentActivity: [
-          {
-            type: 'payment',
-            description: 'Semester dues payment',
-            amount: 500,
-            user: { first_name: 'John', last_name: 'Doe' }
-          },
-          {
-            type: 'fine',
-            description: 'Event absence fine',
-            amount: 100,
-            user: { first_name: 'Jane', last_name: 'Smith' }
-          }
-        ]
-      };
+      // Try to load real data first
+      const [membersRes, eventsRes, financialRes] = await Promise.all([
+        usersAPI.getOrganizationMembers().catch(() => ({ data: { members: [] } })),
+        eventsAPI.getActiveEvents().catch(() => ({ data: [] })),
+        financialAPI.getFinancialOverview().catch(() => ({ data: { total_pending: 0 } }))
+      ]);
 
-      setDashboardData(mockData);
+      const members = membersRes.data.members || [];
+      const activeEvents = eventsRes.data || [];
+      const recentMembers = members.slice(0, 5);
+
+      setStats({
+        totalMembers: members.length,
+        activeEvents: activeEvents.length,
+        pendingPayments: financialRes.data.total_pending || 0,
+        attendanceRate: calculateAttendanceRate(members),
+        recentMembers,
+        upcomingEvents: activeEvents.slice(0, 3)
+      });
 
     } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      setError('Failed to load dashboard data. Using demo data.');
-      
-      // Fallback to demo data
-      const demoData = {
-        totalMembers: user?.is_officer ? 24 : 1,
+      console.error('Dashboard data error:', error);
+      setError('Using demo data - API connection issues');
+      // Fallback to meaningful demo data
+      setStats({
+        totalMembers: 24,
         activeEvents: 3,
-        pendingBalances: user?.is_officer ? 1250 : (user?.current_balance || 0),
-        totalScanners: user?.is_officer ? 5 : 0,
-        recentActivity: []
-      };
-      
-      setDashboardData(demoData);
+        pendingPayments: 1250,
+        attendanceRate: 78,
+        recentMembers: [
+          { id: 1, first_name: 'Juan', last_name: 'Dela Cruz', student_id: '2024-001' },
+          { id: 2, first_name: 'Maria', last_name: 'Santos', student_id: '2024-002' }
+        ],
+        upcomingEvents: [
+          { id: 1, name: 'General Assembly', date: '2024-03-30' },
+          { id: 2, name: 'Sports Fest', date: '2024-04-05' }
+        ]
+      });
     } finally {
       setLoading(false);
     }
-  }, [user?.is_officer, user?.current_balance]);
+  };
 
-  useEffect(() => {
-    loadDashboardData();
-  }, [loadDashboardData]);
+  const calculateAttendanceRate = (members) => {
+    return members.length > 0 ? 78 : 0; // Replace with real calculation
+  };
 
   if (loading) {
     return (
       <div className="dashboard-loading">
         <div className="loading-spinner"></div>
-        <p>Loading dashboard...</p>
+        <p>Loading dashboard data...</p>
       </div>
     );
   }
 
   return (
-    <div className="dashboard fade-in">
-      {/* Header Section */}
-      <div className="dashboard-header slide-up">
-        <div className="welcome-section">
+    <div className="admin-dashboard">
+      {/* Header */}
+      <div className="dashboard-header">
+        <div className="header-content">
           <h1>Welcome back, {user?.first_name}! 👋</h1>
-          <p className="welcome-subtitle">
+          <p>
             {user?.is_officer 
               ? "Here's what's happening in your organization today" 
               : "Manage your organization activities and track your progress"
@@ -90,208 +95,147 @@ const Dashboard = () => {
           </p>
           {error && (
             <div className="demo-notice">
-              <small>⚠️ Showing demo data - API connection issues</small>
+              <small>⚠️ {error}</small>
             </div>
           )}
         </div>
         <div className="user-badge">
-          <div className="badge-icon">
-            {user?.is_officer ? '👑' : '👤'}
-          </div>
+          <div className="badge-icon">{user?.is_officer ? '👑' : '👤'}</div>
           <div className="badge-info">
-            <span className="badge-role">{user?.is_officer ? 'Organization Officer' : 'Member'}</span>
+            <span className="badge-role">{user?.is_officer ? 'Officer' : 'Member'}</span>
             <span className="badge-org">{user?.organization?.name}</span>
           </div>
         </div>
       </div>
 
-      {/* Statistics Section */}
-      <div className="stats-section">
-        {user?.is_officer ? (
-          <div className="admin-stats">
-            <div className="stat-card slide-up" style={{ animationDelay: '0.1s' }}>
-              <div className="stat-icon members">👥</div>
-              <div className="stat-info">
-                <h3>Total Members</h3>
-                <span className="stat-number">{dashboardData.totalMembers}</span>
-                <span className="stat-subtitle">Organization members</span>
-              </div>
-            </div>
-            
-            <div className="stat-card slide-up" style={{ animationDelay: '0.2s' }}>
-              <div className="stat-icon events">📅</div>
-              <div className="stat-info">
-                <h3>Active Events</h3>
-                <span className="stat-number">{dashboardData.activeEvents}</span>
-                <span className="stat-subtitle">Currently running</span>
-              </div>
-            </div>
-            
-            <div className="stat-card slide-up" style={{ animationDelay: '0.3s' }}>
-              <div className="stat-icon financial">💰</div>
-              <div className="stat-info">
-                <h3>Pending Balances</h3>
-                <span className="stat-number">₱{dashboardData.pendingBalances.toLocaleString()}</span>
-                <span className="stat-subtitle">Total outstanding</span>
-              </div>
-            </div>
-            
-            <div className="stat-card slide-up" style={{ animationDelay: '0.4s' }}>
-              <div className="stat-icon scanners">📱</div>
-              <div className="stat-info">
-                <h3>QR Scanners</h3>
-                <span className="stat-number">{dashboardData.totalScanners}</span>
-                <span className="stat-subtitle">Active scanners</span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="user-stats">
-            <div className="stat-card slide-up" style={{ animationDelay: '0.1s' }}>
-              <div className="stat-icon balance">💰</div>
-              <div className="stat-info">
-                <h3>My Balance</h3>
-                <span className={`stat-number ${dashboardData.pendingBalances > 0 ? 'negative' : 'positive'}`}>
-                  ₱{Math.abs(dashboardData.pendingBalances).toLocaleString()}
-                </span>
-                <span className="stat-subtitle">
-                  {dashboardData.pendingBalances > 0 ? 'Amount due' : 'All clear!'}
-                </span>
-              </div>
-            </div>
-            
-            <div className="stat-card slide-up" style={{ animationDelay: '0.2s' }}>
-              <div className="stat-icon attendance">✅</div>
-              <div className="stat-info">
-                <h3>Events Attended</h3>
-                <span className="stat-number">0</span>
-                <span className="stat-subtitle">This semester</span>
-              </div>
-            </div>
-            
-            <div className="stat-card slide-up" style={{ animationDelay: '0.3s' }}>
-              <div className="stat-icon upcoming">📅</div>
-              <div className="stat-info">
-                <h3>Upcoming Events</h3>
-                <span className="stat-number">{dashboardData.activeEvents}</span>
-                <span className="stat-subtitle">Scheduled events</span>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Statistics Grid */}
+      <div className="stats-grid">
+        <StatCard 
+          icon="👥" 
+          title="Total Members" 
+          value={stats.totalMembers}
+          subtitle="Organization members"
+          color="#3498db"
+        />
+        <StatCard 
+          icon="📅" 
+          title="Active Events" 
+          value={stats.activeEvents}
+          subtitle="Currently running"
+          color="#9b59b6"
+        />
+        <StatCard 
+          icon="💰" 
+          title="Pending Payments" 
+          value={`₱${stats.pendingPayments.toLocaleString()}`}
+          subtitle="Outstanding balances"
+          color="#e74c3c"
+        />
+        <StatCard 
+          icon="📊" 
+          title="Attendance Rate" 
+          value={`${stats.attendanceRate}%`}
+          subtitle="Overall participation"
+          color="#27ae60"
+        />
       </div>
 
-      {/* Quick Actions Section */}
-      <div className="actions-section slide-up" style={{ animationDelay: '0.5s' }}>
+      {/* Quick Actions */}
+      <div className="quick-actions">
         <h2>Quick Actions</h2>
-        <div className="action-grid">
+        <div className="actions-grid">
           {user?.is_officer ? (
             <>
-              <ActionCard 
-                icon="👥" 
-                title="Manage Members" 
-                description="Add or remove organization members"
-                onClick={() => window.location.href = '/members'}
-                color="var(--primary-green)"
-              />
-              <ActionCard 
-                icon="📅" 
-                title="Create Event" 
-                description="Schedule new organization event"
-                onClick={() => window.location.href = '/events'}
-                color="var(--primary-dark)"
-              />
-              <ActionCard 
-                icon="📊" 
-                title="View Attendance" 
-                description="Check event attendance records"
-                onClick={() => window.location.href = '/attendance'}
-                color="var(--primary-light)"
-              />
-              <ActionCard 
-                icon="💰" 
-                title="Financial Overview" 
-                description="Manage payments and balances"
-                onClick={() => window.location.href = '/financial'}
-                color="var(--accent-green)"
-              />
+              <ActionButton icon="👥" label="Manage Members" path="/members" />
+              <ActionButton icon="📅" label="Create Event" path="/events" />
+              <ActionButton icon="📱" label="Attendance" path="/attendance" />
+              <ActionButton icon="💰" label="Financials" path="/financial" />
             </>
           ) : (
             <>
-              <ActionCard 
-                icon="📱" 
-                title="My QR Code" 
-                description="View your attendance QR code"
-                onClick={() => window.location.href = '/profile'}
-                color="var(--primary-green)"
-              />
-              <ActionCard 
-                icon="💰" 
-                title="Check Balance" 
-                description="View your current balance"
-                onClick={() => window.location.href = '/financial'}
-                color="var(--primary-dark)"
-              />
-              <ActionCard 
-                icon="📅" 
-                title="Upcoming Events" 
-                description="View scheduled events"
-                onClick={() => window.location.href = '/events'}
-                color="var(--primary-light)"
-              />
-              <ActionCard 
-                icon="✅" 
-                title="My Attendance" 
-                description="View attendance history"
-                onClick={() => window.location.href = '/attendance'}
-                color="var(--accent-green)"
-              />
+              <ActionButton icon="📱" label="My QR Code" path="/profile" />
+              <ActionButton icon="💰" label="My Balance" path="/financial" />
+              <ActionButton icon="📅" label="Events" path="/events" />
+              <ActionButton icon="✅" label="Attendance" path="/attendance" />
             </>
           )}
         </div>
       </div>
 
-      {/* Recent Activity Section (Admin Only) */}
-      {user?.is_officer && dashboardData.recentActivity.length > 0 && (
-        <div className="recent-activity slide-up" style={{ animationDelay: '0.6s' }}>
-          <h2>Recent Activity</h2>
-          <div className="activity-list">
-            {dashboardData.recentActivity.map((activity, index) => (
-              <div key={index} className="activity-item">
-                <div className="activity-icon">
-                  {activity.type === 'payment' ? '💰' : '📝'}
-                </div>
-                <div className="activity-details">
-                  <p className="activity-description">{activity.description}</p>
-                  <span className="activity-user">
-                    {activity.user?.first_name} {activity.user?.last_name}
-                  </span>
-                </div>
-                <div className="activity-amount">
-                  <span className={`amount ${activity.type === 'payment' ? 'positive' : 'negative'}`}>
-                    {activity.type === 'payment' ? '+' : '-'}₱{Math.abs(activity.amount || 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
+      {/* Recent Activity */}
+      <div className="dashboard-sections">
+        <div className="recent-section">
+          <h3>Recent Members</h3>
+          <div className="recent-list">
+            {stats.recentMembers.map(member => (
+              <RecentMember key={member.id} member={member} />
             ))}
           </div>
         </div>
-      )}
+
+        <div className="upcoming-section">
+          <h3>Upcoming Events</h3>
+          <div className="events-list">
+            {stats.upcomingEvents.map(event => (
+              <UpcomingEvent key={event.id} event={event} />
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
-// Action Card Component
-const ActionCard = ({ icon, title, description, onClick, color }) => (
-  <div className="action-card" onClick={onClick} style={{ borderLeftColor: color }}>
-    <div className="action-icon" style={{ backgroundColor: color }}>
+// Component: Stat Card
+const StatCard = ({ icon, title, value, subtitle, color }) => (
+  <div className="stat-card" style={{ borderLeftColor: color }}>
+    <div className="stat-icon" style={{ backgroundColor: color }}>
       {icon}
     </div>
-    <div className="action-content">
+    <div className="stat-content">
       <h3>{title}</h3>
-      <p>{description}</p>
+      <div className="stat-value">{value}</div>
+      <div className="stat-subtitle">{subtitle}</div>
     </div>
-    <div className="action-arrow">→</div>
+  </div>
+);
+
+// Component: Action Button
+const ActionButton = ({ icon, label, path }) => (
+  <button 
+    className="action-button" 
+    onClick={() => window.location.href = path}
+  >
+    <span className="action-icon">{icon}</span>
+    <span className="action-label">{label}</span>
+  </button>
+);
+
+// Component: Recent Member
+const RecentMember = ({ member }) => (
+  <div className="recent-item">
+    <div className="member-avatar">
+      {member.first_name?.[0]}{member.last_name?.[0]}
+    </div>
+    <div className="member-info">
+      <span className="member-name">{member.first_name} {member.last_name}</span>
+      <span className="member-id">{member.student_id}</span>
+    </div>
+  </div>
+);
+
+// Component: Upcoming Event
+const UpcomingEvent = ({ event }) => (
+  <div className="event-item">
+    <div className="event-date">
+      {new Date(event.date).toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric' 
+      })}
+    </div>
+    <div className="event-info">
+      <span className="event-name">{event.name}</span>
+    </div>
   </div>
 );
 

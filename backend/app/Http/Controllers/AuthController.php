@@ -168,4 +168,44 @@ class AuthController extends Controller
             'message' => 'Profile updated successfully'
         ]);
     }
+
+    // Add this method to your existing AuthController
+public function register(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'student_id' => 'required|unique:users|string|max:50',
+        'first_name' => 'required|string|max:255',
+        'last_name' => 'required|string|max:255',
+        'email' => 'required|email|unique:users',
+        'password' => 'required|min:8|confirmed',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    try {
+        $user = User::create([
+            'student_id' => $request->student_id,
+            'first_name' => $request->first_name,
+            'last_name' => $request->last_name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'is_officer' => false, // Students are not officers by default
+            'organization_member' => false, // Need admin approval
+            'can_scan' => false, // No scanning privileges by default
+            'organization_id' => 1, // Default organization
+        ]);
+
+        return response()->json([
+            'message' => 'Registration successful. Please wait for admin approval.',
+            'user' => $user
+        ], 201);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Registration failed. Please try again.'
+        ], 500);
+    }
+}
 }

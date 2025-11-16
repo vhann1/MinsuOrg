@@ -1,6 +1,8 @@
-// src/context/AuthContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { authAPI } from '../services/authAPI';
+import { authAPI, initializeCSRF } from '../services/api'; // Remove usersAPI import
+
+// Create axios instance for direct API calls
+const api = require('../services/api').default;
 
 const AuthContext = createContext();
 
@@ -15,87 +17,115 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+
+  const isAuthenticated = !!user;
 
   useEffect(() => {
-    // Pre-fetch CSRF token when app starts
-    const initializeApp = async () => {
+    const initializeAuth = async () => {
       try {
-        await authAPI.ensureCsrf();
-        await checkAuth();
-      } catch (err) {
-        console.log('App initialization failed:', err);
+        await initializeCSRF();
+        await checkAuthStatus();
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+      } finally {
         setLoading(false);
       }
     };
 
-    initializeApp();
+    initializeAuth();
   }, []);
 
-  const checkAuth = async () => {
+  const checkAuthStatus = async () => {
     try {
-      const response = await authAPI.getMe();
-      setUser(response.data.user);
-      setError('');
-      console.log('User authenticated:', response.data.user.email);
-    } catch (err) {
-      // Silent fail for 401 - it's normal when not logged in
-      if (err.response?.status !== 401) {
-        console.error('Auth check error:', err);
+      console.log('Checking auth status...');
+      
+      // FIX: Use the correct endpoint that matches your Laravel routes
+      const response = await api.get('/api/user'); // Now 'api' is defined
+      
+      console.log('Auth check response:', response.data);
+      
+      if (response.data.user) {
+        setUser(response.data.user);
+        console.log('User authenticated:', response.data.user.email);
+      } else {
+        setUser(null);
+        console.log('No user data in response');
       }
+    } catch (error) {
+      console.error('Auth check failed:', error);
       setUser(null);
-      setError('');
-    } finally {
-      setLoading(false);
     }
   };
 
   const login = async (credentials) => {
     try {
-      setLoading(true);
-      setError('');
+      console.log('Starting login process...');
       const response = await authAPI.login(credentials);
-      setUser(response.data.user);
-      return { success: true };
-    } catch (err) {
-      let errorMessage = 'Login failed. Please check your credentials.';
       
-      if (err.response?.status === 419) {
-        errorMessage = 'Session expired. Please try again.';
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.response?.data?.error) {
-        errorMessage = err.response.data.error;
+      console.log('Login response data:', response.data);
+      
+      if (response.data.user) {
+        setUser(response.data.user);
+        console.log('Login successful:', response.data.user.email);
+        
+        // FIX: Return the user data for proper redirection
+        return {
+          user: response.data.user,
+          message: response.data.message
+        };
+      } else {
+        throw new Error('No user data in response');
       }
+    } catch (error) {
+      console.error('Login error:', error);
       
-      setError(errorMessage);
-      return { success: false, error: errorMessage };
-    } finally {
-      setLoading(false);
+      // FIX: Better error handling
+      if (error.response?.data?.errors) {
+        throw new Error(Object.values(error.response.data.errors).flat().join(', '));
+      }
+      throw new Error(error.response?.data?.message || 'Login failed');
     }
   };
 
   const logout = async () => {
     try {
+      console.log('Logging out...');
       await authAPI.logout();
-    } catch (err) {
-      console.error('Logout error:', err);
+    } catch (error) {
+      console.error('Logout error:', error);
     } finally {
       setUser(null);
-      setError('');
+      console.log('Logout complete, redirecting to login...');
+      // Use window.location for logout to clear everything
+      window.location.href = '/login';
+    }
+  };
+
+  const register = async (userData) => {
+    try {
+      console.log('Starting registration...');
+      const response = await authAPI.register(userData);
+      console.log('Registration successful');
+      return response.data;
+    } catch (error) {
+      console.error('Registration error:', error);
+      
+      // FIX: Better error handling for registration
+      if (error.response?.data?.errors) {
+        throw new Error(Object.values(error.response.data.errors).flat().join(', '));
+      }
+      throw new Error(error.response?.data?.message || 'Registration failed');
     }
   };
 
   const value = {
     user,
-    loading,
-    error,
+    isAuthenticated,
     login,
     logout,
-    checkAuth,
-    isAuthenticated: !!user,
-    isOfficer: user?.is_officer || false,
-    organization: user?.organization
+    register,
+    loading,
+    checkAuthStatus // Export for manual refresh
   };
 
   return (
