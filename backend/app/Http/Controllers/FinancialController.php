@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FinancialLedger;
 use App\Models\User;
+use App\Events\FinancialLedgerUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -85,6 +86,9 @@ class FinancialController extends Controller
                 'recorded_at' => $request->payment_date,
                 'cleared' => $newBalance <= 0
             ]);
+
+            // Broadcast financial ledger update
+            broadcast(new FinancialLedgerUpdated($payment))->toOthers();
 
             return response()->json([
                 'message' => 'Payment recorded successfully',
@@ -186,6 +190,9 @@ class FinancialController extends Controller
                 'recorded_at' => $request->entry_date,
                 'cleared' => $newBalance <= 0
             ]);
+
+            // Broadcast financial ledger update
+            broadcast(new FinancialLedgerUpdated($entry))->toOthers();
 
             return response()->json([
                 'message' => 'Manual entry added successfully',
@@ -324,6 +331,9 @@ class FinancialController extends Controller
                 'recorded_at' => now(),
                 'cleared' => false
             ]);
+
+            // Broadcast financial ledger update
+            broadcast(new FinancialLedgerUpdated($fine))->toOthers();
 
             return response()->json([
                 'message' => 'Absence fine applied successfully',

@@ -20,7 +20,7 @@ Route::get('/health', function () {
     ]);
 });
 
-// CSRF token endpoint for API (with web middleware for sessions)
+// Auth routes - using web middleware for CSRF protection and sessions
 Route::middleware('web')->group(function () {
     Route::get('/csrf-token', function (Request $request) {
         return response()->json([
@@ -29,11 +29,10 @@ Route::middleware('web')->group(function () {
             'session_started' => session()->isStarted()
         ]);
     });
-});
 
-Route::post('/login', [AuthController::class, 'login']);
-// Add this to your public routes in api.php
-Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/register', [AuthController::class, 'register']);
+});
 
 // Protected routes
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -73,6 +72,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/events/{eventId}/attendance', [AttendanceController::class, 'getEventAttendance']);
     Route::post('/attendance/manual', [AttendanceController::class, 'manualAttendance']);
     Route::get('/attendance/user/{userId}', [AttendanceController::class, 'getUserAttendanceHistory']);
+
+    // Event QR Codes (event-based, auto-generated per event)
+    Route::get('/events/{id}/qr', [EventController::class, 'getEventQR']);
 
     // Financial Ledger (Sorted by Balance)
     Route::get('/financial/student-ledger/{userId}', [FinancialController::class, 'getStudentLedger']);

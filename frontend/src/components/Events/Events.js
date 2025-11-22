@@ -11,9 +11,16 @@ const Events = () => {
   const [actionLoading, setActionLoading] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAbsentModal, setShowAbsentModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
   const [newEvent, setNewEvent] = useState({
+    title: '',
+    description: '',
+    start_time: '',
+    end_time: ''
+  });
+  const [editEvent, setEditEvent] = useState({
+    id: null,
     title: '',
     description: '',
     start_time: '',
@@ -21,14 +28,16 @@ const Events = () => {
   });
 
   useEffect(() => {
-    fetchEvents();
-  }, []);
+    if (user?.is_officer) {
+      fetchEvents();
+    }
+  }, [user]);
 
   const fetchEvents = async () => {
     try {
       setLoading(true);
       const response = await eventsAPI.getEvents();
-      setEvents(response.data.events || response.data);
+      setEvents(response.data.data || response.data.events || []);
     } catch (error) {
       console.error('Error fetching events:', error);
     } finally {
@@ -40,7 +49,12 @@ const Events = () => {
     e.preventDefault();
     try {
       setActionLoading('creating');
-      await eventsAPI.createEvent(newEvent);
+      await eventsAPI.createEvent({
+        title: newEvent.title,
+        description: newEvent.description,
+        start_time: newEvent.start_time,
+        end_time: newEvent.end_time
+      });
       setShowAddModal(false);
       setNewEvent({
         title: '',
@@ -49,13 +63,26 @@ const Events = () => {
         end_time: ''
       });
       await fetchEvents();
+      alert('Event created successfully!');
     } catch (error) {
       console.error('Error adding event:', error);
-      alert('Failed to create event. Please try again.');
+      alert(error.response?.data?.message || 'Failed to create event. Please try again.');
     } finally {
       setActionLoading(null);
     }
   };
+
+  if (!user?.is_officer) {
+    return (
+      <div className="access-denied fade-in">
+        <div className="denied-content">
+          <div className="denied-icon">🔒</div>
+          <h2>Access Denied</h2>
+          <p>Officer privileges are required to manage events.</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleToggleActive = async (eventId, currentStatus) => {
     try {
@@ -83,6 +110,67 @@ const Events = () => {
     } catch (error) {
       console.error('Error marking absent:', error);
       alert('Failed to mark absent students. Please try again.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleEditEvent = (event) => {
+    // Convert to datetime-local format (YYYY-MM-DDTHH:mm)
+    const startTime = new Date(event.start_time).toISOString().slice(0, 16);
+    const endTime = new Date(event.end_time).toISOString().slice(0, 16);
+    
+    setEditEvent({
+      id: event.id,
+      title: event.title,
+      description: event.description || '',
+      start_time: startTime,
+      end_time: endTime
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateEvent = async (e) => {
+    e.preventDefault();
+    try {
+      setActionLoading('updating');
+      await eventsAPI.updateEvent(editEvent.id, {
+        title: editEvent.title,
+        description: editEvent.description,
+        start_time: editEvent.start_time,
+        end_time: editEvent.end_time
+      });
+      setShowEditModal(false);
+      setEditEvent({
+        id: null,
+        title: '',
+        description: '',
+        start_time: '',
+        end_time: ''
+      });
+      await fetchEvents();
+      alert('Event updated successfully!');
+    } catch (error) {
+      console.error('Error updating event:', error);
+      alert(error.response?.data?.message || 'Failed to update event. Please try again.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId) => {
+    if (!window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setActionLoading(`delete-${eventId}`);
+      await eventsAPI.deleteEvent(eventId);
+      await fetchEvents();
+      alert('Event deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      alert(error.response?.data?.message || 'Failed to delete event. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -138,12 +226,22 @@ const Events = () => {
 
   const getStatusColor = (status) => {
     const colors = {
-      upcoming: 'var(--primary-green)',
-      active: 'var(--success)',
-      ended: 'var(--text-light)',
-      cancelled: 'var(--danger)'
+      upcoming: '#1b5e3f',
+      active: '#27ae60',
+      ended: '#666666',
+      cancelled: '#d32f2f'
     };
-    return colors[status] || 'var(--text-light)';
+    return colors[status] || '#666666';
+  };
+
+  const getStatusBgColor = (status) => {
+    const colors = {
+      upcoming: '#e8f5f0',
+      active: '#e8f8f0',
+      ended: '#f5f5f5',
+      cancelled: '#fce4e4'
+    };
+    return colors[status] || '#f5f5f5';
   };
 
   if (loading) {
@@ -188,22 +286,6 @@ const Events = () => {
         </div>
       </div>
 
-      {/* View Toggle */}
-      <div className="view-toggle slide-up" style={{ animationDelay: '0.1s' }}>
-        <button 
-          className={`toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
-          onClick={() => setViewMode('list')}
-        >
-          📋 List View
-        </button>
-        <button 
-          className={`toggle-btn ${viewMode === 'calendar' ? 'active' : ''}`}
-          onClick={() => setViewMode('calendar')}
-        >
-          📅 Calendar View
-        </button>
-      </div>
-
       {/* Events Needing Processing Alert */}
       {user?.is_officer && eventsNeedingProcessing.length > 0 && (
         <div className="processing-alert slide-up" style={{ animationDelay: '0.2s' }}>
@@ -245,29 +327,33 @@ const Events = () => {
               const needsProcessing = status === 'ended' && event.absent_count === 0;
               
               return (
-                <div key={event.id} className="event-card">
+                <div key={event.id} className="event-card" style={{ borderLeftColor: getStatusColor(status) }}>
+                  {/* Event Status Badge */}
+                  <div className="event-status-badge" style={{ backgroundColor: getStatusBgColor(status) }}>
+                    <span 
+                      className="status-dot"
+                      style={{ backgroundColor: getStatusColor(status) }}
+                    ></span>
+                    <span className="status-text" style={{ color: getStatusColor(status) }}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </span>
+                  </div>
+
                   {/* Event Header */}
                   <div className="event-header">
                     <div className="event-title-section">
                       <h3>{event.title}</h3>
-                      <span 
-                        className="event-status"
-                        style={{ color: getStatusColor(status) }}
-                      >
-                        ● {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </span>
                     </div>
                     
                     {user?.is_officer && (
-                      <div className="event-actions">
-                        <button 
-                          className={`btn-toggle ${event.is_active ? 'active' : 'inactive'}`}
-                          onClick={() => handleToggleActive(event.id, event.is_active)}
-                          disabled={actionLoading === event.id}
-                        >
-                          {actionLoading === event.id ? '...' : (event.is_active ? '🟢 Active' : '⚪ Inactive')}
-                        </button>
-                      </div>
+                      <button 
+                        className={`btn-toggle ${event.is_active ? 'active' : 'inactive'}`}
+                        onClick={() => handleToggleActive(event.id, event.is_active)}
+                        disabled={actionLoading === event.id}
+                        title={event.is_active ? 'Click to deactivate' : 'Click to activate'}
+                      >
+                        {actionLoading === event.id ? '...' : (event.is_active ? '🟢 Active' : '⚪ Inactive')}
+                      </button>
                     )}
                   </div>
 
@@ -314,15 +400,38 @@ const Events = () => {
                         setSelectedEvent(event);
                         setShowAbsentModal(true);
                       }}
+                      title="View attendance details"
                     >
                       👥 View Attendance
                     </button>
+                    
+                    {user?.is_officer && (
+                      <>
+                        <button 
+                          className="btn-secondary"
+                          onClick={() => handleEditEvent(event)}
+                          title="Edit event details"
+                        >
+                          ✏️ Edit
+                        </button>
+                        
+                        <button 
+                          className="btn-danger"
+                          onClick={() => handleDeleteEvent(event.id)}
+                          disabled={actionLoading === `delete-${event.id}`}
+                          title="Delete this event"
+                        >
+                          {actionLoading === `delete-${event.id}` ? '...' : '🗑️ Delete'}
+                        </button>
+                      </>
+                    )}
                     
                     {user?.is_officer && needsProcessing && (
                       <button 
                         className="btn-warning"
                         onClick={() => handleMarkAbsent(event.id)}
                         disabled={actionLoading === `absent-${event.id}`}
+                        title="Mark all non-present students as absent and apply fines"
                       >
                         {actionLoading === `absent-${event.id}` ? 'Marking...' : '🚨 Mark Absent'}
                       </button>
@@ -330,7 +439,7 @@ const Events = () => {
                     
                     {user?.is_officer && status === 'ended' && event.absent_count > 0 && (
                       <span className="processed-badge">
-                        ✅ Absent Marked
+                        ✅ Processed
                       </span>
                     )}
                   </div>
@@ -472,6 +581,85 @@ const Events = () => {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Event Modal */}
+      {showEditModal && (
+        <div className="modal-overlay fade-in">
+          <div className="modal slide-up">
+            <div className="modal-header">
+              <h3>Edit Event</h3>
+              <button 
+                onClick={() => setShowEditModal(false)}
+                className="modal-close"
+              >
+                ×
+              </button>
+            </div>
+            
+            <form onSubmit={handleUpdateEvent} className="modal-body">
+              <div className="form-group">
+                <label>Event Title *</label>
+                <input
+                  type="text"
+                  value={editEvent.title}
+                  onChange={(e) => setEditEvent({...editEvent, title: e.target.value})}
+                  placeholder="Enter event title"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  value={editEvent.description}
+                  onChange={(e) => setEditEvent({...editEvent, description: e.target.value})}
+                  placeholder="Describe the event (optional)"
+                  rows="3"
+                />
+              </div>
+              
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Time *</label>
+                  <input
+                    type="datetime-local"
+                    value={editEvent.start_time}
+                    onChange={(e) => setEditEvent({...editEvent, start_time: e.target.value})}
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>End Time *</label>
+                  <input
+                    type="datetime-local"
+                    value={editEvent.end_time}
+                    onChange={(e) => setEditEvent({...editEvent, end_time: e.target.value})}
+                    required
+                  />
+                </div>
+              </div>
+              
+              <div className="modal-actions">
+                <button 
+                  type="button" 
+                  onClick={() => setShowEditModal(false)}
+                  className="btn-cancel"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={actionLoading === 'updating'}
+                  className="btn-primary"
+                >
+                  {actionLoading === 'updating' ? 'Updating...' : 'Update Event'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

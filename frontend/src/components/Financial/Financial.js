@@ -5,16 +5,18 @@ import './Financial.css';
 
 // Add the missing API imports
 import { financialAPI } from '../../services/api';
+import realtimeService from '../../services/realtimeService';
 
 const Financial = () => {
   const { user } = useAuth();
   const [ledgers, setLedgers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
-  const [memberLedger, setMemberLedger] = useState([]);
+  const [memberLedgerDetail, setMemberLedgerDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showFineModal, setShowFineModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [paymentData, setPaymentData] = useState({
     amount: '',
     description: '',
@@ -25,11 +27,31 @@ const Financial = () => {
     description: '',
     fine_date: new Date().toISOString().split('T')[0]
   });
-  const [viewMode, setViewMode] = useState('organization'); // 'organization' or 'member'
 
   useEffect(() => {
     loadFinancialData();
   }, []);
+
+  useEffect(() => {
+    // Connect to real-time updates for officers
+    if (user?.is_officer) {
+      if (!realtimeService.isConnected()) {
+        realtimeService.connect();
+      }
+
+      // Listen for financial updates
+      const unsubscribe = realtimeService.on('financial.updated', (data) => {
+        console.log('Real-time financial update received:', data);
+        loadFinancialData(); // Refresh financial data
+      });
+
+      return () => {
+        if (unsubscribe && typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      };
+    }
+  }, [user?.id, user?.is_officer]);
 
   const loadFinancialData = async () => {
     try {
@@ -47,17 +69,13 @@ const Financial = () => {
   const loadMemberLedger = async (memberId) => {
     try {
       setActionLoading(memberId);
-      const endpoint = user?.is_officer ? 
-        financialAPI.getStudentLedger : 
-        financialAPI.getMemberLedger;
-      
-      const response = await endpoint(memberId);
-      setMemberLedger(response.data.ledger || []);
-      setSelectedMember(response.data.user || ledgers.find(l => l.id === memberId));
-      setViewMode('member');
+      const response = await financialAPI.getStudentLedger(memberId);
+      setMemberLedgerDetail(response.data);
+      setSelectedMember(response.data.user);
+      setShowDetailModal(true);
     } catch (error) {
       console.error('Error fetching member ledger:', error);
-      alert('Failed to load member ledger. Please try again.');
+      alert(error.response?.data?.message || 'Failed to load member ledger. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -82,9 +100,6 @@ const Financial = () => {
       });
       
       await loadFinancialData();
-      if (viewMode === 'member') {
-        await loadMemberLedger(selectedMember.id);
-      }
       
       alert('Payment recorded successfully!');
     } catch (error) {
@@ -113,9 +128,6 @@ const Financial = () => {
       });
       
       await loadFinancialData();
-      if (viewMode === 'member') {
-        await loadMemberLedger(selectedMember.id);
-      }
       
       alert('Fine applied successfully!');
     } catch (error) {
@@ -138,16 +150,6 @@ const Financial = () => {
     }
   };
 
-  const getTypeBadge = (type) => {
-    const badges = {
-      fine: { class: 'badge-fine', icon: '⚡' },
-      payment: { class: 'badge-payment', icon: '💰' },
-      due: { class: 'badge-due', icon: '📝' },
-      adjustment: { class: 'badge-adjustment', icon: '🔧' }
-    };
-    return badges[type] || { class: 'badge-secondary', icon: '📋' };
-  };
-
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
@@ -155,19 +157,23 @@ const Financial = () => {
     }).format(amount);
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
   if (loading) {
     return (
       <div className="financial-loading">
         <div className="loading-spinner"></div>
         <p>Loading financial data...</p>
+      </div>
+    );
+  }
+
+  if (!user?.is_officer) {
+    return (
+      <div className="access-denied fade-in">
+        <div className="denied-content">
+          <div className="denied-icon">🔒</div>
+          <h2>Access Denied</h2>
+          <p>Officer privileges are required to manage finances.</p>
+        </div>
       </div>
     );
   }
@@ -201,236 +207,113 @@ const Financial = () => {
         </div>
       </div>
 
-      {/* View Toggle */}
-      <div className="view-toggle slide-up" style={{ animationDelay: '0.1s' }}>
-        <button 
-          className={`toggle-btn ${viewMode === 'organization' ? 'active' : ''}`}
-          onClick={() => setViewMode('organization')}
-        >
-          👥 Organization View
-        </button>
-        <button 
-          className={`toggle-btn ${viewMode === 'member' ? 'active' : ''}`}
-          onClick={() => setViewMode('member')}
-          disabled={!selectedMember}
-        >
-          👤 Member Details
-        </button>
-      </div>
-
       {/* Organization Financial Overview */}
-      {viewMode === 'organization' && (
-        <div className="organization-view slide-up" style={{ animationDelay: '0.2s' }}>
-          <div className="section-header">
-            <h2>Member Balances</h2>
-            <p>Sorted by highest balance first</p>
+      <div className="organization-view slide-up" style={{ animationDelay: '0.2s' }}>
+        <div className="section-header">
+          <h2>Member Balances</h2>
+          <p>Sorted by highest balance first</p>
+        </div>
+
+        {ledgers.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">💰</div>
+            <h3>No Financial Data</h3>
+            <p>Financial records will appear here as transactions occur.</p>
           </div>
-
-          {ledgers.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">💰</div>
-              <h3>No Financial Data</h3>
-              <p>Financial records will appear here as transactions occur.</p>
+        ) : (
+          <div className="ledger-table">
+            <div className="table-header">
+              <div className="col-member">Member</div>
+              <div className="col-balance">Balance</div>
+              <div className="col-status">Status</div>
+              <div className="col-actions">Actions</div>
             </div>
-          ) : (
-            <div className="ledger-table">
-              <div className="table-header">
-                <div className="col-member">Member</div>
-                <div className="col-balance">Balance</div>
-                <div className="col-status">Status</div>
-                <div className="col-actions">Actions</div>
-              </div>
 
-              <div className="table-body">
-                {ledgers.map((member, index) => {
-                  const status = getStatusBadge(member.current_balance);
-                  const isHighPriority = member.current_balance > 0;
-                  
-                  return (
-                    <div 
-                      key={member.id} 
-                      className={`table-row ${isHighPriority ? 'has-balance' : 'cleared'} ${index < 3 ? 'top-balance' : ''}`}
-                    >
-                      <div className="col-member">
-                        <div className="member-avatar">
-                          {member.first_name?.[0]}{member.last_name?.[0]}
-                        </div>
-                        <div className="member-details">
-                          <h4>{member.first_name} {member.last_name}</h4>
-                          <p className="member-email">{member.email}</p>
-                          <p className="member-id">ID: {member.student_id}</p>
-                        </div>
+            <div className="table-body">
+              {ledgers.map((member, index) => {
+                const status = getStatusBadge(member.current_balance);
+                const isHighPriority = member.current_balance > 0;
+                
+                return (
+                  <div 
+                    key={member.id} 
+                    className={`table-row ${isHighPriority ? 'has-balance' : 'cleared'} ${index < 3 ? 'top-balance' : ''}`}
+                  >
+                    <div className="col-member">
+                      <div className="member-avatar">
+                        {member.first_name?.[0]}{member.last_name?.[0]}
                       </div>
-
-                      <div className="col-balance">
-                        <span className={`balance-amount ${member.current_balance > 0 ? 'negative' : 'positive'}`}>
-                          {formatCurrency(Math.abs(member.current_balance))}
-                        </span>
-                        {member.current_balance > 0 && (
-                          <span className="balance-label">
-                            {member.current_balance > 0 ? 'Amount Due' : 'Credit'}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="col-status">
-                        <span className={`status-badge ${status.class}`}>
-                          {status.text}
-                        </span>
-                        {member.ledger_entries_count > 0 && (
-                          <span className="entries-count">
-                            {member.ledger_entries_count} entries
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="col-actions">
-                        <div className="action-buttons">
-                          <button
-                            onClick={() => loadMemberLedger(member.id)}
-                            disabled={actionLoading === member.id}
-                            className="btn-view"
-                          >
-                            {actionLoading === member.id ? '...' : '📊 View'}
-                          </button>
-                          
-                          {user?.is_officer && member.current_balance > 0 && (
-                            <button
-                              onClick={() => {
-                                setSelectedMember(member);
-                                setShowPaymentModal(true);
-                              }}
-                              className="btn-pay"
-                            >
-                              💳 Pay
-                            </button>
-                          )}
-                          
-                          {user?.is_officer && (
-                            <button
-                              onClick={() => {
-                                setSelectedMember(member);
-                                setShowFineModal(true);
-                              }}
-                              className="btn-fine"
-                            >
-                              ⚡ Fine
-                            </button>
-                          )}
-                        </div>
+                      <div className="member-details">
+                        <h4>{member.first_name} {member.last_name}</h4>
+                        <p className="member-email">{member.email}</p>
+                        <p className="member-id">ID: {member.student_id}</p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Member Ledger Details */}
-      {viewMode === 'member' && selectedMember && (
-        <div className="member-view slide-up" style={{ animationDelay: '0.2s' }}>
-          <div className="member-header">
-            <button 
-              className="btn-back"
-              onClick={() => setViewMode('organization')}
-            >
-              ← Back to Organization
-            </button>
-            
-            <div className="member-summary">
-              <div className="member-avatar large">
-                {selectedMember.first_name?.[0]}{selectedMember.last_name?.[0]}
-              </div>
-              <div className="member-info">
-                <h2>{selectedMember.first_name} {selectedMember.last_name}</h2>
-                <p>{selectedMember.email} • ID: {selectedMember.student_id}</p>
-              </div>
-              
-              <div className="balance-card">
-                <h3>Current Balance</h3>
-                <div className={`balance-display ${selectedMember.current_balance > 0 ? 'negative' : 'positive'}`}>
-                  {formatCurrency(Math.abs(selectedMember.current_balance || 0))}
-                </div>
-                <span className={`status-badge large ${getStatusBadge(selectedMember.current_balance).class}`}>
-                  {getStatusBadge(selectedMember.current_balance).text}
-                </span>
-              </div>
-            </div>
+                    <div className="col-balance">
+                      <span className={`balance-amount ${member.current_balance > 0 ? 'negative' : 'positive'}`}>
+                        {formatCurrency(Math.abs(member.current_balance))}
+                      </span>
+                      {member.current_balance > 0 && (
+                        <span className="balance-label">
+                          {member.current_balance > 0 ? 'Amount Due' : 'Credit'}
+                        </span>
+                      )}
+                    </div>
 
-            {user?.is_officer && (
-              <div className="member-actions">
-                <button
-                  onClick={() => setShowPaymentModal(true)}
-                  disabled={selectedMember.current_balance <= 0}
-                  className="btn-primary"
-                >
-                  💳 Record Payment
-                </button>
-                <button
-                  onClick={() => setShowFineModal(true)}
-                  className="btn-warning"
-                >
-                  ⚡ Apply Fine
-                </button>
-              </div>
-            )}
-          </div>
+                    <div className="col-status">
+                      <span className={`status-badge ${status.class}`}>
+                        {status.text}
+                      </span>
+                      {member.ledger_entries_count > 0 && (
+                        <span className="entries-count">
+                          {member.ledger_entries_count} entries
+                        </span>
+                      )}
+                    </div>
 
-          <div className="ledger-details">
-            <h3>Transaction History</h3>
-            
-            {memberLedger.length === 0 ? (
-              <div className="empty-state small">
-                <div className="empty-icon">📝</div>
-                <h4>No Transactions</h4>
-                <p>No financial transactions recorded for this member yet.</p>
-              </div>
-            ) : (
-              <div className="transaction-list">
-                {memberLedger.map(entry => {
-                  const typeBadge = getTypeBadge(entry.type);
-                  
-                  return (
-                    <div key={entry.id} className="transaction-item">
-                      <div className="transaction-icon">
-                        {typeBadge.icon}
-                      </div>
-                      
-                      <div className="transaction-details">
-                        <div className="transaction-header">
-                          <h4>{entry.description}</h4>
-                          <span className="transaction-date">
-                            {formatDate(entry.recorded_at || entry.created_at)}
-                          </span>
-                        </div>
+                    <div className="col-actions">
+                      <div className="action-buttons">
+                        <button
+                          onClick={() => loadMemberLedger(member.id)}
+                          disabled={actionLoading === member.id}
+                          className="btn-view"
+                        >
+                          {actionLoading === member.id ? '...' : '👁️ View'}
+                        </button>
                         
-                        <div className="transaction-meta">
-                          <span className={`transaction-type ${typeBadge.class}`}>
-                            {entry.type.toUpperCase()}
-                          </span>
-                          {entry.balance_before !== undefined && (
-                            <span className="transaction-balance">
-                              Balance: {formatCurrency(entry.balance_after)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="transaction-amount">
-                        <span className={`amount ${entry.type === 'payment' ? 'positive' : 'negative'}`}>
-                          {entry.type === 'payment' ? '-' : '+'}{formatCurrency(entry.amount)}
-                        </span>
+                        {user?.is_officer && member.current_balance > 0 && (
+                          <button
+                            onClick={() => {
+                              setSelectedMember(member);
+                              setShowPaymentModal(true);
+                            }}
+                            className="btn-pay"
+                          >
+                            💳 Pay
+                          </button>
+                        )}
+                        
+                        {user?.is_officer && (
+                          <button
+                            onClick={() => {
+                              setSelectedMember(member);
+                              setShowFineModal(true);
+                            }}
+                            className="btn-fine"
+                          >
+                            ⚡ Fine
+                          </button>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Payment Modal */}
       {showPaymentModal && selectedMember && (
@@ -453,6 +336,20 @@ const Financial = () => {
           onSubmit={handleApplyFine}
           onClose={() => setShowFineModal(false)}
           loading={actionLoading === 'fine'}
+        />
+      )}
+
+      {/* Member Detail Modal */}
+      {showDetailModal && memberLedgerDetail && (
+        <MemberDetailModal
+          member={memberLedgerDetail.user}
+          ledger={memberLedgerDetail.ledger}
+          currentBalance={memberLedgerDetail.current_balance}
+          onClose={() => {
+            setShowDetailModal(false);
+            setMemberLedgerDetail(null);
+          }}
+          formatCurrency={formatCurrency}
         />
       )}
     </div>
@@ -597,6 +494,75 @@ const FineModal = ({ member, fineData, setFineData, onSubmit, onClose, loading }
           </button>
         </div>
       </form>
+    </div>
+  </div>
+);
+
+// Member Detail Modal Component
+const MemberDetailModal = ({ member, ledger, currentBalance, onClose, formatCurrency }) => (
+  <div className="modal-overlay fade-in">
+    <div className="modal slide-up" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+      <div className="modal-header">
+        <h3>Transaction History - {member.first_name} {member.last_name}</h3>
+        <button onClick={onClose} className="modal-close">×</button>
+      </div>
+      
+      <div className="modal-body">
+        <div className="member-summary">
+          <div className="summary-item">
+            <span className="label">Student ID:</span>
+            <span className="value">{member.student_id}</span>
+          </div>
+          <div className="summary-item">
+            <span className="label">Email:</span>
+            <span className="value">{member.email}</span>
+          </div>
+          <div className="summary-item">
+            <span className="label">Current Balance:</span>
+            <span className={`value ${currentBalance > 0 ? 'due' : 'cleared'}`}>
+              {formatCurrency(currentBalance)}
+            </span>
+          </div>
+        </div>
+
+        <div className="ledger-history">
+          <h4>Transaction History</h4>
+          {ledger && ledger.length > 0 ? (
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                  <th>Amount</th>
+                  <th>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.map((entry, index) => (
+                  <tr key={index}>
+                    <td>{new Date(entry.created_at).toLocaleDateString()}</td>
+                    <td><span className={`badge badge-${entry.type}`}>{entry.type}</span></td>
+                    <td>{entry.description}</td>
+                    <td>{formatCurrency(entry.amount)}</td>
+                    <td className={entry.balance_after > 0 ? 'due' : 'cleared'}>
+                      {formatCurrency(entry.balance_after)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>No transaction history</p>
+          )}
+        </div>
+      </div>
+
+      <div className="modal-actions">
+        <button type="button" onClick={onClose} className="btn-primary">
+          Close
+        </button>
+      </div>
     </div>
   </div>
 );

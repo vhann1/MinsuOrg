@@ -21,9 +21,13 @@ return [
 
     'allowed_origins' => [
         'http://localhost:3000',
+        'http://localhost:3001',
         'http://127.0.0.1:3000',
+        'http://127.0.0.1:3001',
         'http://localhost:5173', // Vite dev server
         'http://127.0.0.1:5173',
+        'http://192.168.1.19:3000', // Network access for testing
+        'http://192.168.1.19:3001',
     ],
 
     'allowed_origins_patterns' => [],

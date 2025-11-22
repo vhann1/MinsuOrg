@@ -19,6 +19,8 @@ class User extends Authenticatable
         'password',
         'qr_code',
         'is_officer',
+        'organization_member',
+        'can_scan',
         'organization_id'
     ];
 
@@ -29,6 +31,8 @@ class User extends Authenticatable
 
     protected $casts = [
         'is_officer' => 'boolean',
+        'organization_member' => 'boolean',
+        'can_scan' => 'boolean',
     ];
 
     // Relationships
@@ -45,16 +49,6 @@ class User extends Authenticatable
     public function financialLedgers()
     {
         return $this->hasMany(FinancialLedger::class);
-    }
-
-    // Generate QR code data
-    public function generateQRData()
-    {
-        return json_encode([
-            'student_id' => $this->student_id,
-            'organization_id' => $this->organization_id,
-            'timestamp' => now()->timestamp
-        ]);
     }
 
     // Get full name
@@ -79,7 +73,7 @@ class User extends Authenticatable
     // app/Models/User.php - Add these methods
 public function isAdmin()
 {
-    return $this->is_officer && $this->email === 'admin@minsu.edu.ph'; // Or your admin email
+    return $this->is_officer && $this->email === 'admin@gmail.com';
 }
 
 public function canScanQR()

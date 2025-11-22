@@ -38,10 +38,7 @@ export const AuthProvider = ({ children }) => {
   const checkAuthStatus = async () => {
     try {
       console.log('Checking auth status...');
-      
-      // FIX: Use the correct endpoint that matches your Laravel routes
-      const response = await api.get('/api/user'); // Now 'api' is defined
-      
+      const response = await api.get('/api/me');
       console.log('Auth check response:', response.data);
       
       if (response.data.user) {
@@ -52,8 +49,20 @@ export const AuthProvider = ({ children }) => {
         console.log('No user data in response');
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
-      setUser(null);
+      // 401 is expected for unauthenticated users
+      if (error.response?.status === 401) {
+        console.log('No active session (expected for new users)');
+        setUser(null);
+      } else if (error.response?.status === 404) {
+        // Endpoint doesn't exist, also means not authenticated
+        console.log('Auth endpoint not found (expected in some setups)');
+        setUser(null);
+      } else {
+        console.error('Auth check error:', error.message);
+        setUser(null);
+      }
+      // Clear any stale token from localStorage
+      localStorage.removeItem('auth_token');
     }
   };
 

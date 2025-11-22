@@ -1,7 +1,10 @@
 // src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import Layout from './components/Layout/Layout';
 import Login from './components/auth/Login/Login';
 import Dashboard from './components/dashboard/Dashboard';
@@ -16,8 +19,8 @@ import UserProfile from './components/UserProfile/UserProfile';
 
 import './App.css';
 
-// Protected Route for OFFICERS (with Layout)
-const OfficerRoute = ({ children }) => {
+// Protected Route for ADMIN ONLY (with Layout) - Can access dashboard & user management only
+const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
@@ -28,14 +31,14 @@ const OfficerRoute = ({ children }) => {
     return <Navigate to="/login" />;
   }
   
-  // Only officers get the admin layout
-  const isOfficer = user.is_officer || user.role === 'officer' || user.role === 'admin';
+  // Only admins get the admin layout (is_officer must be true)
+  const isAdmin = user.is_officer === true;
   
-  return isOfficer ? <Layout>{children}</Layout> : <Navigate to="/user-profile" />;
+  return isAdmin ? <Layout>{children}</Layout> : <Navigate to="/login" />;
 };
 
-// Protected Route for STUDENTS (without Layout)
-const StudentRoute = ({ children }) => {
+// Protected Route for STUDENTS/OFFICERS to access UserProfile (for scanning)
+const UserProfileRoute = ({ children }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
@@ -46,106 +49,139 @@ const StudentRoute = ({ children }) => {
     return <Navigate to="/login" />;
   }
   
-  // Students get the plain component without admin layout
-  const isStudent = !user.is_officer && user.role !== 'officer' && user.role !== 'admin';
-  
-  return isStudent ? children : <Navigate to="/dashboard" />;
+  // Both students and officers can access user profile (officers can scan here)
+  return children;
 };
 
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { user, loading } = useAuth();
   
+  // IMPORTANT: Never redirect during loading. Wait for auth check to complete.
   if (loading) {
-    return <div className="loading-screen">Loading...</div>;
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        backgroundColor: '#f5f5f5'
+      }}>
+        <div style={{ fontSize: '18px', color: '#666' }}>Loading...</div>
+      </div>
+    );
   }
   
-  return !isAuthenticated ? children : <Navigate to="/dashboard" />;
+  // Only redirect after loading is complete and user exists
+  if (user) {
+    const isAdmin = user.is_officer === true;
+    return <Navigate to={isAdmin ? "/dashboard" : "/user-profile"} />;
+  }
+  
+  // Allow access to login/register if not authenticated
+  return children;
 };
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="App">
-          <Routes>
-            <Route 
-              path="/login" 
-              element={
-                <PublicRoute>
-                  <Login />
-                </PublicRoute>
-              } 
+    <ErrorBoundary>
+      <AuthProvider>
+        <Router>
+          <div className="App">
+            <ToastContainer
+              position="bottom-right"
+              autoClose={3000}
+              hideProgressBar={false}
+              newestOnTop={true}
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="light"
             />
+            <Routes>
+              <Route 
+                path="/login" 
+                element={
+                  <PublicRoute>
+                    <Login />
+                  </PublicRoute>
+                } 
+              />
             
-            {/* OFFICER ONLY ROUTES (with Layout) */}
+            {/* ADMIN ONLY ROUTES (with Layout) */}
             <Route 
               path="/dashboard" 
               element={
-                <OfficerRoute>
+                <AdminRoute>
                   <Dashboard />
-                </OfficerRoute>
+                </AdminRoute>
               } 
             />
             <Route 
               path="/members" 
               element={
-                <OfficerRoute>
+                <AdminRoute>
                   <Members />
-                </OfficerRoute>
+                </AdminRoute>
               } 
             />
             <Route 
               path="/events" 
               element={
-                <OfficerRoute>
+                <AdminRoute>
                   <Events />
-                </OfficerRoute>
+                </AdminRoute>
               } 
             />
             <Route 
               path="/attendance" 
               element={
-                <OfficerRoute>
+                <AdminRoute>
                   <Attendance />
-                </OfficerRoute>
+                </AdminRoute>
               } 
             />
             <Route 
               path="/financial" 
               element={
-                <OfficerRoute>
+                <AdminRoute>
                   <Financial />
-                </OfficerRoute>
+                </AdminRoute>
               } 
             />
             <Route 
               path="/calendar" 
               element={
-                <OfficerRoute>
+                <AdminRoute>
                   <Calendar />
-                </OfficerRoute>
+                </AdminRoute>
               } 
             />
             <Route 
               path="/settings" 
               element={
-                <OfficerRoute>
+                <AdminRoute>
                   <Settings />
-                </OfficerRoute>
+                </AdminRoute>
               } 
             />
             
-            {/* STUDENT ONLY ROUTE (without Layout) */}
+            {/* STUDENT & OFFICER ROUTE (UserProfile with camera scanning) */}
             <Route 
               path="/user-profile" 
               element={
-                <StudentRoute>
+                <UserProfileRoute>
                   <UserProfile />
-                </StudentRoute>
+                </UserProfileRoute>
               } 
             />
             
-            <Route path="/register" element={<Register />} />
+            <Route path="/register" element={
+              <PublicRoute>
+                <Register />
+              </PublicRoute>
+            } />
             
             {/* SMART ROOT REDIRECT */}
             <Route path="/" element={<RootRedirect />} />
@@ -154,6 +190,7 @@ function App() {
         </div>
       </Router>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -169,10 +206,9 @@ const RootRedirect = () => {
     return <Navigate to="/login" />;
   }
   
-  // Redirect based on role
-  const isOfficer = user.is_officer || user.role === 'officer' || user.role === 'admin';
-  
-  return isOfficer ? <Navigate to="/dashboard" /> : <Navigate to="/user-profile" />;
+  // Admin goes to dashboard, students/others go to user-profile
+  const isAdmin = user.is_officer === true;
+  return isAdmin ? <Navigate to="/dashboard" /> : <Navigate to="/user-profile" />;
 };
 
 export default App;

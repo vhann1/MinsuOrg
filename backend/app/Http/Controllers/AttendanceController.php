@@ -6,6 +6,7 @@ use App\Models\Attendance;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\FinancialLedger;
+use App\Events\AttendanceRecorded;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -29,38 +30,34 @@ class AttendanceController extends Controller
                 $qrData = json_decode($request->qr_data, true);
                 
                 if (!$this->validateQRData($qrData)) {
-                    return response()->json(['error' => 'Invalid or expired QR code'], 400);
+                    return response()->json(['error' => 'Invalid QR code or event is not currently active'], 400);
                 }
 
-                $student = User::where('student_id', $qrData['student_id'])
-                    ->where('organization_id', $request->user()->organization_id)
-                    ->first();
+                // Get the event
+                $event = Event::find($qrData['event_id']);
+
+                // Get authenticated user (the one scanning their own QR)
+                $student = $request->user();
 
                 if (!$student) {
-                    return response()->json(['error' => 'Student not found in your organization'], 404);
+                    return response()->json(['error' => 'User not found'], 404);
                 }
 
-                $event = Event::where('id', $request->event_id)
-                    ->where('organization_id', $request->user()->organization_id)
-                    ->where('is_active', true)
-                    ->first();
-
-                if (!$event) {
-                    return response()->json(['error' => 'Event not found or not active'], 404);
+                // Check if student is part of the organization
+                if ($student->organization_id !== $event->organization_id) {
+                    return response()->json(['error' => 'Student not part of this organization'], 403);
                 }
 
-                if (!$event->isActiveNow()) {
-                    return response()->json(['error' => 'Event is not currently active'], 400);
-                }
-
+                // Check for duplicate attendance
                 $existingAttendance = Attendance::where('user_id', $student->id)
                     ->where('event_id', $event->id)
                     ->first();
 
                 if ($existingAttendance) {
-                    return response()->json(['error' => 'Attendance already recorded'], 409);
+                    return response()->json(['error' => 'You have already marked attendance for this event'], 409);
                 }
 
+                // Create attendance record
                 $attendance = Attendance::create([
                     'user_id' => $student->id,
                     'event_id' => $event->id,
@@ -68,10 +65,14 @@ class AttendanceController extends Controller
                     'scanned_at' => now()
                 ]);
 
+                // Broadcast attendance recorded event for real-time update
+                broadcast(new AttendanceRecorded($attendance))->toOthers();
+
                 return response()->json([
-                    'message' => 'Attendance recorded successfully',
+                    'message' => 'Attendance marked successfully!',
                     'attendance' => $attendance->load('user'),
-                    'event' => $event->only(['id', 'title', 'start_time'])
+                    'event' => $event->only(['id', 'title', 'start_time', 'end_time']),
+                    'student_name' => $student->full_name
                 ], 201);
             });
         } catch (\Exception $e) {
@@ -81,16 +82,37 @@ class AttendanceController extends Controller
 
     private function validateQRData(array $qrData): bool
     {
-        if (!isset($qrData['student_id']) || !isset($qrData['timestamp']) || !isset($qrData['hash'])) {
+        // Check required fields
+        if (!isset($qrData['event_id']) || !isset($qrData['hash'])) {
             return false;
         }
 
-        // Check if QR code is expired (5 minutes)
-        if (now()->timestamp - $qrData['timestamp'] > 300) {
-            return false;
+        // Find the event
+        $event = Event::find($qrData['event_id']);
+        if (!$event) {
+            return false; // Event not found
         }
 
-        $expectedHash = md5($qrData['student_id'] . $qrData['organization_id'] . config('app.key'));
+        // Check if event is currently active
+        if (!$event->isActiveNow()) {
+            return false; // Event is not active
+        }
+
+        // Check if event has ended
+        if ($event->hasEnded()) {
+            return false; // Event has ended
+        }
+
+        // Verify hash
+        $expectedQRData = [
+            'event_id' => $qrData['event_id'],
+            'event_title' => $event->title,
+            'organization_id' => $qrData['organization_id'] ?? $event->organization_id,
+            'generated_at' => $qrData['generated_at'] ?? now()->timestamp,
+            'expires_at' => $event->end_time->timestamp
+        ];
+        
+        $expectedHash = hash('sha256', json_encode($expectedQRData) . config('app.key'));
         return hash_equals($expectedHash, $qrData['hash']);
     }
 
@@ -234,6 +256,28 @@ class AttendanceController extends Controller
         return response()->json([
             'user' => $user->only(['id', 'student_id', 'first_name', 'last_name']),
             'attendances' => $attendances,
+            'summary' => [
+                'total' => $attendances->count(),
+                'present' => $attendances->where('status', 'present')->count(),
+                'attendance_rate' => $attendances->count() > 0 ? 
+                    round(($attendances->where('status', 'present')->count() / $attendances->count()) * 100, 2) : 0
+            ]
+        ]);
+    }
+
+    public function getUserAttendanceHistory(Request $request, $userId): JsonResponse
+    {
+        $user = User::where('id', $userId)
+            ->where('organization_id', $request->user()->organization_id)
+            ->firstOrFail();
+
+        $attendances = Attendance::with(['event:id,title,start_time,end_time'])
+            ->where('user_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'attendance' => $attendances,
             'summary' => [
                 'total' => $attendances->count(),
                 'present' => $attendances->where('status', 'present')->count(),

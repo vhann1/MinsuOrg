@@ -22,12 +22,12 @@ class AdminUserSeeder extends Seeder
 
         // Create admin user
         User::firstOrCreate(
-            ['email' => 'admin@minsu.edu'],
+            ['email' => 'admin@gmail.com'],
             [
                 'student_id' => 'admin001',
                 'first_name' => 'System',
                 'last_name' => 'Admin',
-                'password' => Hash::make('admin123'),
+                'password' => Hash::make('12345678'),
                 'is_officer' => true,
                 'organization_member' => true,
                 'can_scan' => true,
@@ -35,6 +35,6 @@ class AdminUserSeeder extends Seeder
             ]
         );
 
-        $this->command->info('Admin user created: admin@minsu.edu / admin123');
+        $this->command->info('Admin user created: admin@gmail.com / 12345678');
     }
 }

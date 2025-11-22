@@ -1,77 +1,204 @@
-/* src/components/Layout/Layout.css (updated) */
+/* Professional Green Theme Layout */
+:root {
+  --primary-green: #1b5e3f;
+  --dark-green: #0d3b24;
+  --light-green: #2d8659;
+  --accent-emerald: #20c997;
+  --bg-light: #f8faf9;
+  --border-color: #e0e7e1;
+}
+
 .layout {
   min-height: 100vh;
-  background-color: #f8f9fa;
+  background: linear-gradient(135deg, var(--bg-light) 0%, #f0f5f2 100%);
 }
 
 .navbar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary-green) 0%, var(--light-green) 100%);
   color: white;
-  padding: 0 30px;
+  padding: 0 35px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 70px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  height: 75px;
+  box-shadow: 0 12px 24px rgba(27, 94, 63, 0.15);
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1000;
+  border-bottom: 3px solid var(--accent-emerald);
+  animation: slideDown 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .navbar-brand {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
 }
 
 .navbar-brand h2 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 26px;
   font-weight: 700;
+  letter-spacing: -0.5px;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .navbar-brand span {
-  font-size: 0.9rem;
-  opacity: 0.9;
+  font-size: 12px;
+  opacity: 0.95;
   background: rgba(255, 255, 255, 0.2);
-  padding: 4px 12px;
+  padding: 6px 12px;
   border-radius: 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .navbar-user {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 18px;
 }
 
 .navbar-user span {
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .logout-btn {
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.2);
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 6px;
+  border: none;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(27, 94, 63, 0.12);
 }
 
 .logout-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(211, 47, 47, 0.25);
 }
 
 .layout-container {
   display: flex;
-  margin-top: 70px;
+  margin-top: 75px;
+  position: relative;
+  min-height: calc(100vh - 75px);
 }
 
 .main-content {
   flex: 1;
-  margin-left: 250px;
-  padding: 30px;
-  min-height: calc(100vh - 70px);
+  margin-left: 260px;
+  padding: 40px 35px;
+  min-height: calc(100vh - 75px);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  background: linear-gradient(135deg, var(--bg-light) 0%, #f0f5f2 100%);
+}
+
+/* Mobile Navigation Toggle */
+.navbar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px 12px;
+  margin-right: 16px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1001;
+}
+
+.navbar-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Mobile Styles */
+@media (max-width: 768px) {
+  .navbar {
+    padding: 0 20px;
+    height: 65px;
+  }
+
+  .navbar-brand h2 {
+    font-size: 22px;
+  }
+
+  .navbar-brand span {
+    display: none;
+  }
+
+  .navbar-user span {
+    display: none;
+  }
+
+  .navbar-toggle {
+    display: block;
+  }
+
+  .layout-container {
+    margin-top: 65px;
+    min-height: calc(100vh - 65px);
+  }
+
+  .main-content {
+    margin-left: 0;
+    padding: 24px 16px;
+    min-height: calc(100vh - 65px);
+  }
+
+  /* Overlay when sidebar is open */
+  .sidebar.active ~ .main-content::before {
+    content: '';
+    position: fixed;
+    top: 65px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 998;
+    pointer-events: none;
+  }
+}
+
+/* Tablet Styles */
+@media (max-width: 1024px) {
+  .main-content {
+    padding: 32px 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar {
+    padding: 0 16px;
+  }
+
+  .navbar-brand h2 {
+    font-size: 18px;
+  }
+
+  .main-content {
+    padding: 16px 12px;
+  }
 }

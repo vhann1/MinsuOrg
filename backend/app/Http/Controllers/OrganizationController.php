@@ -37,7 +37,9 @@ class OrganizationController extends Controller
 
         return response()->json([
             'message' => 'Organization updated successfully',
-            'organization' => $organization->fresh()
+            'organization' => $organization->fresh()->loadCount(['users', 'events', 'users as officers_count' => function($q) {
+                $q->where('is_officer', true);
+            }])
         ]);
     }
 }

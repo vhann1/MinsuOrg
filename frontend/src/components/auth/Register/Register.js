@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import './Register.css';
 
@@ -14,8 +15,20 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [successDelay, setSuccessDelay] = useState(0);
 
   const { register } = useAuth();
+  const navigate = useNavigate();
+
+  // Auto-redirect after success
+  useEffect(() => {
+    if (success && successDelay > 0) {
+      const timer = setTimeout(() => {
+        navigate('/login');
+      }, successDelay);
+      return () => clearTimeout(timer);
+    }
+  }, [success, successDelay, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,8 +50,13 @@ const Register = () => {
     }
 
     try {
-      await register(formData);
-      setSuccess('Registration successful! Please wait for admin approval before logging in.');
+      const result = await register(formData);
+      
+      // Success message
+      const successMsg = result.message || 'Registration successful! Your QR code has been generated. Redirecting to login...';
+      setSuccess(successMsg);
+      
+      // Reset form
       setFormData({
         student_id: '',
         first_name: '',
@@ -47,9 +65,31 @@ const Register = () => {
         password: '',
         password_confirmation: ''
       });
+
+      // Redirect after 3 seconds
+      setSuccessDelay(3000);
+      
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.message || err.response?.data?.error || 'Registration failed. Please try again.');
+      
+      // Better error message handling
+      let errorMsg = 'Registration failed. Please try again.';
+      
+      if (err.response?.data?.errors) {
+        // Handle validation errors
+        const errors = err.response.data.errors;
+        errorMsg = Object.values(errors)
+          .flat()
+          .join(', ');
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMsg = err.response.data.error;
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -84,7 +124,7 @@ const Register = () => {
           
           {success && (
             <div className="alert alert-success">
-              {success}
+              ✓ {success}
             </div>
           )}
 
@@ -98,7 +138,7 @@ const Register = () => {
               onChange={handleChange}
               placeholder="Enter your student ID"
               required
-              disabled={loading}
+              disabled={loading || success}
             />
           </div>
 
@@ -113,7 +153,7 @@ const Register = () => {
                 onChange={handleChange}
                 placeholder="Enter your first name"
                 required
-                disabled={loading}
+                disabled={loading || success}
               />
             </div>
             <div className="form-group">
@@ -126,7 +166,7 @@ const Register = () => {
                 onChange={handleChange}
                 placeholder="Enter your last name"
                 required
-                disabled={loading}
+                disabled={loading || success}
               />
             </div>
           </div>
@@ -141,7 +181,7 @@ const Register = () => {
               onChange={handleChange}
               placeholder="Enter your email"
               required
-              disabled={loading}
+              disabled={loading || success}
             />
           </div>
 
@@ -156,7 +196,7 @@ const Register = () => {
                 onChange={handleChange}
                 placeholder="Create password (min. 8 characters)"
                 required
-                disabled={loading}
+                disabled={loading || success}
                 minLength="8"
               />
             </div>
@@ -170,7 +210,7 @@ const Register = () => {
                 onChange={handleChange}
                 placeholder="Confirm password"
                 required
-                disabled={loading}
+                disabled={loading || success}
                 minLength="8"
               />
             </div>
@@ -183,12 +223,17 @@ const Register = () => {
           <button 
             type="submit" 
             className="btn btn-primary btn-full"
-            disabled={loading}
+            disabled={loading || success}
           >
             {loading ? (
               <>
                 <div className="spinner"></div>
                 Creating Account...
+              </>
+            ) : success ? (
+              <>
+                <div className="spinner"></div>
+                Redirecting to login...
               </>
             ) : (
               'Create Account'

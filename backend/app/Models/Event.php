@@ -35,13 +35,11 @@ class Event extends Model
         return $this->hasMany(Attendance::class);
     }
 
-    // Check if event is currently active
+    // Check if event is currently active (based on time window only)
     public function isActiveNow()
     {
         $now = now();
-        return $this->is_active && 
-               $this->start_time <= $now && 
-               $this->end_time >= $now;
+        return $this->start_time <= $now && $now <= $this->end_time;
     }
 
     // Check if event has ended
@@ -193,5 +191,28 @@ class Event extends Model
                     ->whereHas('attendances', function($q) {
                         $q->where('status', 'absent');
                     }, '<', 1); // Events with no absent records
+    }
+
+    // Generate unique QR code for this event
+    public function generateEventQRCode()
+    {
+        $qrData = [
+            'event_id' => $this->id,
+            'event_title' => $this->title,
+            'organization_id' => $this->organization_id,
+            'generated_at' => now()->timestamp,
+            'expires_at' => $this->end_time->timestamp
+        ];
+        
+        $qrHash = hash('sha256', json_encode($qrData) . config('app.key'));
+        $qrData['hash'] = $qrHash;
+        
+        return json_encode($qrData);
+    }
+
+    // Check if QR code is still valid
+    public function isQRCodeValid()
+    {
+        return $this->isActiveNow() && !$this->hasEnded();
     }
 }

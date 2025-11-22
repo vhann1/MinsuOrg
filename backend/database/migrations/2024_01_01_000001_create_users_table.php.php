@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('last_name');
             $table->string('email')->unique();
             $table->string('password');
-            $table->string('qr_code')->unique();
+            $table->longText('qr_code')->nullable();
             $table->boolean('is_officer')->default(false);
             $table->foreignId('organization_id')->constrained()->onDelete('cascade');
             $table->rememberToken();

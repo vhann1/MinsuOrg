@@ -198,7 +198,8 @@ class UserController extends Controller
 
         $user->update([
             'organization_member' => true,
-            'can_scan' => $request->can_scan ?? false
+            'is_officer' => $request->is_officer ?? true,
+            'can_scan' => $request->can_scan ?? true
         ]);
 
         return response()->json([

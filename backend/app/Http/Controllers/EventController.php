@@ -26,7 +26,7 @@ class EventController extends Controller
             ->get();
 
         return response()->json([
-            'events' => $events,
+            'data' => $events,
             'total' => $events->count()
         ]);
     }
@@ -293,5 +293,35 @@ class EventController extends Controller
             'total_events_processed' => $expiredEvents->count(),
             'total_absences_marked' => $totalAbsentMarked
         ]);
+    }
+
+    // Get QR code for active event - used by students to scan
+    public function getEventQR(Request $request, $id): JsonResponse
+    {
+        $event = Event::where('id', $id)
+            ->where('organization_id', $request->user()->organization_id)
+            ->firstOrFail();
+
+        // Check if event is currently active
+        if (!$event->isActiveNow()) {
+            return response()->json([
+                'error' => 'QR code is not available. Event is not currently active.',
+                'event_status' => $event->hasEnded() ? 'ended' : 'not_started',
+                'event' => $event->only(['id', 'title', 'start_time', 'end_time', 'is_active']),
+                'current_time' => now()->toIso8601String()
+            ], 400);
+        }
+
+        // Generate and return QR code for this event
+        $qrData = $event->generateEventQRCode();
+
+        return response()->json([
+            'message' => 'QR code generated successfully',
+            'event_id' => $event->id,
+            'event_title' => $event->title,
+            'qr_code' => $qrData,
+            'valid_until' => $event->end_time->toIso8601String(),
+            'is_active' => $event->isActiveNow()
+        ], 200);
     }
 }

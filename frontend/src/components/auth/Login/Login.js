@@ -24,14 +24,14 @@ const Login = () => {
       
       console.log('Login result:', result);
       
-      // FIX: Check both is_officer and role for compatibility
-      const isOfficer = result.user.is_officer || result.user.role === 'officer' || result.user.role === 'admin';
+      // Check if user is admin
+      const isAdmin = result.user?.is_officer === true;
       
-      if (isOfficer) {
-        console.log('Redirecting to dashboard (officer)');
+      if (isAdmin) {
+        console.log('Admin login detected, redirecting to dashboard');
         navigate('/dashboard');
       } else {
-        console.log('Redirecting to profile (student)');
+        console.log('Student login detected, redirecting to user profile');
         navigate('/user-profile');
       }
     } catch (err) {

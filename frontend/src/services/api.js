@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000';
+// Use environment variable or default to localhost for development
+// For network access, change to your computer's IP: http://192.168.1.19:8000
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://192.168.1.19:8000';
+
+console.log('API Base URL:', API_BASE_URL);
 
 // Create axios instance
 const api = axios.create({
@@ -20,15 +24,28 @@ let csrfToken = null;
 export const initializeCSRF = async () => {
   try {
     console.log('Initializing CSRF token...');
-    await axios.get(`${API_BASE_URL}/sanctum/csrf-cookie`, {
-      withCredentials: true
-    });
+    
+    // Try both endpoints - Laravel Sanctum and custom
+    try {
+      await axios.get(`${API_BASE_URL}/sanctum/csrf-cookie`, {
+        withCredentials: true
+      });
+    } catch (e) {
+      console.log('Sanctum endpoint not available, trying custom endpoint');
+      await api.get('/api/csrf-token', {
+        withCredentials: true
+      });
+    }
     
     // Extract CSRF token from cookies
     csrfToken = document.cookie
       .split('; ')
       .find(row => row.startsWith('XSRF-TOKEN='))
       ?.split('=')[1];
+    
+    if (!csrfToken) {
+      console.log('No CSRF token found in cookies, will work with session only');
+    }
     
     console.log('CSRF token initialized:', csrfToken ? 'Success' : 'Failed');
     return csrfToken;
@@ -42,6 +59,13 @@ export const initializeCSRF = async () => {
 api.interceptors.request.use(async (config) => {
   console.log(`Making ${config.method?.toUpperCase()} request to:`, config.url);
   
+  // For PUT/PATCH requests, always refresh CSRF token to avoid 419 errors
+  if (['put', 'patch', 'delete'].includes(config.method?.toLowerCase())) {
+    console.log('Refreshing CSRF token for state-changing request...');
+    csrfToken = null; // Force refresh
+    await initializeCSRF();
+  }
+  
   // Add CSRF token for state-changing requests
   if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase())) {
     if (!csrfToken) {
@@ -50,17 +74,12 @@ api.interceptors.request.use(async (config) => {
     
     if (csrfToken) {
       config.headers['X-XSRF-TOKEN'] = decodeURIComponent(csrfToken);
-      console.log('Added CSRF token to request');
     }
   }
 
-  // Add auth token if available
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-    console.log('Added auth token to request');
-  }
-  
+  // Note: Auth token in localStorage is NOT being used
+  // We rely on Laravel session cookies with withCredentials: true
+  // If you need token-based auth, implement Sanctum tokens in AuthController
   return config;
 }, (error) => {
   console.error('Request interceptor error:', error);
@@ -76,13 +95,11 @@ api.interceptors.response.use(
   (error) => {
     console.error('Response error:', error.response?.status, error.response?.data);
     
+    // 401 is NORMAL for unauthenticated users - don't redirect
+    // Let the app handle it through AuthContext
     if (error.response?.status === 401) {
-      console.log('Unauthorized, redirecting to login...');
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user');
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
+      console.log('Unauthorized (401) - user not authenticated, this is normal');
+      // Don't redirect - let AuthContext handle auth state
     }
     
     if (error.response?.status === 419) {
@@ -150,6 +167,7 @@ export const usersAPI = {
 export const eventsAPI = {
   getEvents: () => api.get('/api/events'),
   getActiveEvents: () => api.get('/api/events/active'),
+  getEventQR: (id) => api.get(`/api/events/${id}/qr`),
   createEvent: (data) => api.post('/api/events', data),
   getEvent: (id) => api.get(`/api/events/${id}`),
   updateEvent: (id, data) => api.put(`/api/events/${id}`, data),
@@ -158,6 +176,7 @@ export const eventsAPI = {
   getEventStats: (id) => api.get(`/api/events/${id}/stats`),
   getEventAttendance: (id) => api.get(`/api/events/${id}/attendance-details`),
   markAbsent: (id) => api.post(`/api/events/${id}/mark-absent`),
+  markAbsentStudents: (id) => api.post(`/api/events/${id}/mark-absent`), // Alias for Events.js
   getEventsNeedingAbsentMarking: () => api.get('/api/events/needing-absent-marking'),
   processAllExpiredEvents: () => api.post('/api/events/process-expired'),
 };
@@ -170,6 +189,7 @@ export const financialAPI = {
   makePayment: (data) => api.post('/api/financial/make-payment', data),
   addManualEntry: (data) => api.post('/api/financial/manual-entry', data),
   applyFine: (data) => api.post('/api/financial/apply-fine', data),
+  applyAbsenceFine: (data) => api.post('/api/financial/apply-fine', data), // Alias
   getFinancialOverview: () => api.get('/api/financial/overview'),
 };
 
@@ -179,7 +199,15 @@ export const attendanceAPI = {
   getEventAttendance: (eventId) => api.get(`/api/events/${eventId}/attendance`),
   manualAttendance: (data) => api.post('/api/attendance/manual', data),
   getUserAttendance: (userId) => api.get(`/api/attendance/user/${userId}`),
-  getUserAttendanceHistory: (userId) => api.get(`/api/attendance/user/${userId}`),
+  getUserAttendanceHistory: (userId) => api.get(`/api/attendance/user/${userId}`), // Same as above, for compatibility
+};
+
+// QR Code API
+export const qrAPI = {
+  generateQR: () => api.post('/api/qr/generate'),
+  getActiveQR: () => api.get('/api/qr/active'),
+  regenerateQR: () => api.post('/api/qr/regenerate'),
+  getQRHistory: () => api.get('/api/qr/history'),
 };
 
 // Dashboard API

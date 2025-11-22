@@ -6,7 +6,11 @@ import './Calendar.css';
 const Calendar = () => {
   const [events, setEvents] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState('month'); // 'month' or 'list'
+  const [view, setView] = useState('month'); // 'month', 'week', 'day', 'list'
+  const [loading, setLoading] = useState(true);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
 
   useEffect(() => {
     fetchEvents();
@@ -14,13 +18,47 @@ const Calendar = () => {
 
   const fetchEvents = async () => {
     try {
+      setLoading(true);
       const response = await eventsAPI.getEvents();
-      setEvents(response.data.events || response.data);
+      setEvents(response.data.events || response.data || []);
     } catch (error) {
       console.error('Error fetching events:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Navigation functions
+  const navigateDate = (direction) => {
+    const newDate = new Date(currentDate);
+    
+    switch (view) {
+      case 'month':
+        newDate.setMonth(currentDate.getMonth() + direction);
+        break;
+      case 'week':
+        newDate.setDate(currentDate.getDate() + (direction * 7));
+        break;
+      case 'day':
+        newDate.setDate(currentDate.getDate() + direction);
+        break;
+      default:
+        break;
+    }
+    
+    setCurrentDate(newDate);
+    setSelectedMonth(newDate.getMonth());
+    setSelectedYear(newDate.getFullYear());
+  };
+
+  const goToToday = () => {
+    const today = new Date();
+    setCurrentDate(today);
+    setSelectedMonth(today.getMonth());
+    setSelectedYear(today.getFullYear());
+  };
+
+  // Date calculation functions
   const getDaysInMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   };
@@ -29,80 +67,263 @@ const Calendar = () => {
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   };
 
-  const getEventsForDay = (day) => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+  const getWeekDates = (date) => {
+    const startOfWeek = new Date(date);
+    const day = startOfWeek.getDay();
+    const diff = startOfWeek.getDate() - day;
+    startOfWeek.setDate(diff);
+    
+    const weekDates = [];
+    for (let i = 0; i < 7; i++) {
+      const weekDay = new Date(startOfWeek);
+      weekDay.setDate(startOfWeek.getDate() + i);
+      weekDates.push(weekDay);
+    }
+    return weekDates;
+  };
+
+  const getEventsForDate = (date) => {
     return events.filter(event => {
-      const eventDate = new Date(event.start_time);
-      return eventDate.getDate() === day && 
-             eventDate.getMonth() === currentDate.getMonth() &&
-             eventDate.getFullYear() === currentDate.getFullYear();
+      const eventDate = new Date(event.start_time || event.date);
+      return eventDate.getDate() === date.getDate() && 
+             eventDate.getMonth() === date.getMonth() &&
+             eventDate.getFullYear() === date.getFullYear();
     });
   };
 
-  const navigateMonth = (direction) => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + direction, 1));
+  const getEventsForDay = (day) => {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    return getEventsForDate(date);
   };
 
-  const today = new Date();
-  const daysInMonth = getDaysInMonth(currentDate);
-  const firstDay = getFirstDayOfMonth(currentDate);
+  // Formatting functions
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  // formatDateShort - reserved for future use
+  // eslint-disable-next-line no-unused-vars
+  const formatDateShort = (date) => {
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric'
+    });
+  };
+
+  // Date arrays
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
   ];
 
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const dayNamesShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Generate years for dropdown (current year ± 10 years)
+  const years = Array.from({ length: 21 }, (_, i) => new Date().getFullYear() - 10 + i);
+
+  if (loading) {
+    return (
+      <div className="calendar-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading events...</p>
+      </div>
+    );
+  }
+
+  const weekDates = getWeekDates(currentDate);
+  const daysInMonth = getDaysInMonth(currentDate);
+  const firstDay = getFirstDayOfMonth(currentDate);
 
   return (
-    <div className="calendar-page">
-      <div className="page-header">
-        <h1>Event Calendar</h1>
+    <div className="calendar">
+      {/* Enhanced Header */}
+      <div className="calendar-header">
+        <div className="header-content">
+          <h1>Event Calendar</h1>
+          <p>View and manage organization events</p>
+        </div>
+        
         <div className="calendar-controls">
-          <button 
-            className="btn btn-secondary"
-            onClick={() => setView(view === 'month' ? 'list' : 'month')}
-          >
-            {view === 'month' ? 'List View' : 'Month View'}
-          </button>
+          {/* View Toggle */}
+          <div className="view-toggle">
+            <button 
+              className={`view-btn ${view === 'month' ? 'active' : ''}`}
+              onClick={() => setView('month')}
+            >
+              Month
+            </button>
+            <button 
+              className={`view-btn ${view === 'week' ? 'active' : ''}`}
+              onClick={() => setView('week')}
+            >
+              Week
+            </button>
+            <button 
+              className={`view-btn ${view === 'day' ? 'active' : ''}`}
+              onClick={() => setView('day')}
+            >
+              Day
+            </button>
+            <button 
+              className={`view-btn ${view === 'list' ? 'active' : ''}`}
+              onClick={() => setView('list')}
+            >
+              List
+            </button>
+          </div>
+          
+          {/* Date Navigation */}
+          <div className="calendar-nav">
+            <div className="nav-controls">
+              <button className="nav-btn" onClick={() => navigateDate(-1)}>
+                ‹
+              </button>
+              
+              <div className="date-display">
+                {view === 'month' && (
+                  <div className="month-year-selector">
+                    <select 
+                      value={selectedMonth}
+                      onChange={(e) => {
+                        const newMonth = parseInt(e.target.value);
+                        setSelectedMonth(newMonth);
+                        const newDate = new Date(currentDate);
+                        newDate.setMonth(newMonth);
+                        setCurrentDate(newDate);
+                      }}
+                      className="month-select"
+                    >
+                      {monthNames.map((month, index) => (
+                        <option key={month} value={index}>{month}</option>
+                      ))}
+                    </select>
+                    <select 
+                      value={selectedYear}
+                      onChange={(e) => {
+                        const newYear = parseInt(e.target.value);
+                        setSelectedYear(newYear);
+                        const newDate = new Date(currentDate);
+                        newDate.setFullYear(newYear);
+                        setCurrentDate(newDate);
+                      }}
+                      className="year-select"
+                    >
+                      {years.map(year => (
+                        <option key={year} value={year}>{year}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                
+                {view === 'week' && (
+                  <span className="current-period">
+                    {`${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - 
+                      ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                  </span>
+                )}
+                
+                {view === 'day' && (
+                  <span className="current-period">
+                    {currentDate.toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </span>
+                )}
+                
+                {view === 'list' && (
+                  <span className="current-period">All Events</span>
+                )}
+              </div>
+              
+              <button className="nav-btn" onClick={() => navigateDate(1)}>
+                ›
+              </button>
+              
+              <button className="today-btn" onClick={goToToday}>
+                Today
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {view === 'month' ? (
-        <div className="calendar-month-view">
-          <div className="calendar-header">
-            <button onClick={() => navigateMonth(-1)} className="nav-btn">←</button>
-            <h2>{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
-            <button onClick={() => navigateMonth(1)} className="nav-btn">→</button>
+      {/* Quick Stats */}
+      <div className="calendar-stats">
+        <div className="stat-card events">
+          <div className="stat-number">{events.length}</div>
+          <div className="stat-label">Total Events</div>
+        </div>
+        <div className="stat-card attendance">
+          <div className="stat-number">
+            {events.filter(event => !event.is_active).length}
           </div>
+          <div className="stat-label">Inactive Events</div>
+        </div>
+        <div className="stat-card financial">
+          <div className="stat-number">
+            {events.filter(event => event.is_active).length}
+          </div>
+          <div className="stat-label">Active Events</div>
+        </div>
+      </div>
 
-          <div className="calendar-grid">
-            {dayNames.map(day => (
-              <div key={day} className="calendar-day-header">{day}</div>
+      {/* Month View */}
+      {view === 'month' && (
+        <div className="calendar-view month-view">
+          <div className="weekdays-header">
+            {dayNamesShort.map(day => (
+              <div key={day} className="weekday">{day}</div>
             ))}
-            
+          </div>
+          
+          <div className="days-grid">
+            {/* Empty days for first week */}
             {Array.from({ length: firstDay }).map((_, index) => (
-              <div key={`empty-${index}`} className="calendar-day empty"></div>
+              <div key={`empty-${index}`} className="calendar-day other-month"></div>
             ))}
             
+            {/* Calendar days */}
             {Array.from({ length: daysInMonth }).map((_, index) => {
               const day = index + 1;
               const dayEvents = getEventsForDay(day);
-              const isToday = today.getDate() === day && 
-                             today.getMonth() === currentDate.getMonth() && 
-                             today.getFullYear() === currentDate.getFullYear();
+              const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+              const isToday = new Date().toDateString() === date.toDateString();
 
               return (
-                <div key={day} className={`calendar-day ${isToday ? 'today' : ''}`}>
+                <div 
+                  key={day} 
+                  className={`calendar-day ${isToday ? 'today' : ''}`}
+                  onClick={() => dayEvents.length > 0 && setSelectedEvent({ dayEvents, date })}
+                >
                   <div className="day-number">{day}</div>
                   <div className="day-events">
-                    {dayEvents.slice(0, 2).map(event => (
+                    {dayEvents.slice(0, 3).map(event => (
                       <div 
                         key={event.id} 
-                        className={`event-dot ${event.is_active ? 'active' : 'inactive'}`}
-                        title={event.title}
-                      />
+                        className={`event-indicator ${event.type || 'event'}`}
+                        title={`${event.title} - ${formatTime(event.start_time)}`}
+                      >
+                        {event.title}
+                      </div>
                     ))}
-                    {dayEvents.length > 2 && (
-                      <div className="more-events">+{dayEvents.length - 2}</div>
+                    {dayEvents.length > 3 && (
+                      <div className="event-indicator event">
+                        +{dayEvents.length - 3} more
+                      </div>
                     )}
                   </div>
                 </div>
@@ -110,40 +331,232 @@ const Calendar = () => {
             })}
           </div>
         </div>
-      ) : (
-        <div className="calendar-list-view">
-          <h2>Upcoming Events</h2>
-          <div className="events-list">
-            {events
-              .filter(event => new Date(event.end_time) >= today)
-              .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
-              .map(event => (
-                <div key={event.id} className="event-list-item">
-                  <div className="event-date">
-                    <div className="event-day">
-                      {new Date(event.start_time).getDate()}
-                    </div>
-                    <div className="event-month">
-                      {monthNames[new Date(event.start_time).getMonth()].substring(0, 3)}
-                    </div>
-                  </div>
-                  <div className="event-details">
-                    <h4>{event.title}</h4>
-                    <p>{event.description}</p>
-                    <div className="event-time">
-                      {new Date(event.start_time).toLocaleTimeString()} - {new Date(event.end_time).toLocaleTimeString()}
-                    </div>
-                  </div>
-                  <div className="event-status">
-                    <span className={`status-badge ${event.is_active ? 'active' : 'inactive'}`}>
-                      {event.is_active ? 'Active' : 'Inactive'}
-                    </span>
+      )}
+
+      {/* Week View */}
+      {view === 'week' && (
+        <div className="calendar-view week-view">
+          <div className="week-header">
+            <div className="time-column"></div>
+            {weekDates.map((date, index) => {
+              const isToday = new Date().toDateString() === date.toDateString();
+              return (
+                <div key={index} className={`week-day-header ${isToday ? 'today' : ''}`}>
+                  <div className="week-day-name">{dayNamesShort[date.getDay()]}</div>
+                  <div className="week-day-date">{date.getDate()}</div>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="week-grid">
+            {/* Time slots */}
+            {Array.from({ length: 12 }).map((_, hourIndex) => {
+              const hour = hourIndex + 8; // 8 AM to 7 PM
+              return (
+                <div key={hour} className="time-slot-row">
+                  <div className="time-label">{hour}:00</div>
+                  {weekDates.map((date, dayIndex) => {
+                    const dayEvents = getEventsForDate(date).filter(event => {
+                      const eventHour = new Date(event.start_time).getHours();
+                      return eventHour === hour;
+                    });
+                    
+                    return (
+                      <div 
+                        key={dayIndex} 
+                        className="time-slot"
+                        onClick={() => dayEvents.length > 0 && setSelectedEvent({ dayEvents, date })}
+                      >
+                        {dayEvents.map(event => (
+                          <div 
+                            key={event.id} 
+                            className={`week-event ${event.type || 'event'}`}
+                          >
+                            {event.title}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Day View */}
+      {view === 'day' && (
+        <div className="calendar-view day-view">
+          <div className="day-header">
+            <div className="time-column"></div>
+            <div className="day-details">
+              <div className="day-name">{dayNames[currentDate.getDay()]}</div>
+              <div className="full-date">
+                {currentDate.toLocaleDateString('en-US', { 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </div>
+            </div>
+          </div>
+          
+          <div className="day-grid">
+            {Array.from({ length: 14 }).map((_, hourIndex) => {
+              const hour = hourIndex + 7; // 7 AM to 8 PM
+              const hourEvents = getEventsForDate(currentDate).filter(event => {
+                const eventHour = new Date(event.start_time).getHours();
+                return eventHour === hour;
+              });
+              
+              return (
+                <div key={hour} className="day-time-slot">
+                  <div className="day-time-label">{hour}:00</div>
+                  <div 
+                    className="day-events-container"
+                    onClick={() => hourEvents.length > 0 && setSelectedEvent(hourEvents[0])}
+                  >
+                    {hourEvents.map(event => (
+                      <div 
+                        key={event.id} 
+                        className={`day-event ${event.type || 'event'}`}
+                      >
+                        <div className="event-title">{event.title}</div>
+                        <div className="event-time">
+                          {formatTime(event.start_time)} - {formatTime(event.end_time)}
+                        </div>
+                        {event.location && (
+                          <div className="event-location">📍 {event.location}</div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            {events.filter(event => new Date(event.end_time) >= today).length === 0 && (
-              <p className="no-events">No upcoming events</p>
-            )}
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* List View */}
+      {view === 'list' && (
+        <div className="calendar-view">
+          <div className="upcoming-events">
+            <h3>All Events</h3>
+            <div className="event-list">
+              {events
+                .sort((a, b) => new Date(a.start_time || a.date) - new Date(b.start_time || b.date))
+                .map(event => (
+                  <div 
+                    key={event.id} 
+                    className="event-item"
+                    onClick={() => setSelectedEvent(event)}
+                  >
+                    <div className="event-info">
+                      <div className="event-name">{event.title}</div>
+                      <div className="event-date">
+                        {formatDate(event.start_time)} • {formatTime(event.start_time)} - {formatTime(event.end_time)}
+                        {event.location && ` • 📍 ${event.location}`}
+                      </div>
+                    </div>
+                    <div className="event-actions">
+                      <span className={`status-badge ${event.is_active ? 'active' : 'inactive'}`}>
+                        {event.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              
+              {events.length === 0 && (
+                <div className="no-events">
+                  <p>No events found</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Event Detail Modal */}
+      {selectedEvent && (
+        <div className="modal-overlay" onClick={() => setSelectedEvent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>
+                {selectedEvent.title || `Events on ${selectedEvent.date?.toLocaleDateString()}`}
+              </h3>
+              <button 
+                className="btn-close"
+                onClick={() => setSelectedEvent(null)}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              {selectedEvent.dayEvents ? (
+                // Multiple events for a day
+                <div className="event-details">
+                  <h4>Events on {selectedEvent.date.toLocaleDateString()}</h4>
+                  {selectedEvent.dayEvents.map(event => (
+                    <div key={event.id} className="event-item">
+                      <div className="event-info">
+                        <div className="event-name">{event.title}</div>
+                        <div className="event-date">
+                          {formatTime(event.start_time)} - {formatTime(event.end_time)}
+                        </div>
+                        <div className="detail-item">
+                          <span className="detail-label">Status:</span>
+                          <span className={`status ${event.is_active ? 'active' : 'inactive'}`}>
+                            {event.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        {event.description && (
+                          <div className="detail-item">
+                            <span className="detail-label">Description:</span>
+                            <span className="detail-value">{event.description}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Single event details
+                <div className="event-details">
+                  <div className="detail-item">
+                    <span className="detail-label">Date:</span>
+                    <span className="detail-value">{formatDate(selectedEvent.start_time)}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">Time:</span>
+                    <span className="detail-value">
+                      {formatTime(selectedEvent.start_time)} - {formatTime(selectedEvent.end_time)}
+                    </span>
+                  </div>
+                  {selectedEvent.location && (
+                    <div className="detail-item">
+                      <span className="detail-label">Location:</span>
+                      <span className="detail-value">{selectedEvent.location}</span>
+                    </div>
+                  )}
+                  <div className="detail-item">
+                    <span className="detail-label">Status:</span>
+                    <span className={`detail-value status ${selectedEvent.is_active ? 'active' : 'inactive'}`}>
+                      {selectedEvent.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  {selectedEvent.description && (
+                    <div className="detail-item">
+                      <span className="detail-label">Description:</span>
+                      <span className="detail-value">{selectedEvent.description}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

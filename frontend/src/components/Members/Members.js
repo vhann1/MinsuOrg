@@ -10,6 +10,14 @@ const Members = () => {
   const [nonMembers, setNonMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
+  
+  // Table states
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Pagination states
+  const [currentMembersPage, setCurrentMembersPage] = useState(1);
+  const [currentNonMembersPage, setCurrentNonMembersPage] = useState(1);
+  const [itemsPerPage] = useState(10); // Number of items per page
 
   useEffect(() => {
     if (user?.is_officer) {
@@ -30,21 +38,26 @@ const Members = () => {
     }
   };
 
-  const addToOrganization = async (userId, grantScanPermission = false) => {
+  const addToOrganization = async (userId, isOfficer = true) => {
     try {
       setActionLoading(userId);
-      await usersAPI.addToOrganization(userId, { can_scan: grantScanPermission });
+      await usersAPI.addToOrganization(userId, { 
+        can_scan: true,
+        is_officer: true,
+        organization_member: true
+      });
       await loadMembers();
+      alert('User added as officer successfully!');
     } catch (error) {
       console.error('Failed to add member:', error);
-      alert('Failed to add member to organization. Please try again.');
+      alert(error.response?.data?.message || 'Failed to add member to organization. Please try again.');
     } finally {
       setActionLoading(null);
     }
   };
 
   const removeFromOrganization = async (userId) => {
-    if (!window.confirm('Are you sure you want to remove this member from the organization?')) {
+    if (!window.confirm('Are you sure you want to remove this officer from the organization?')) {
       return;
     }
 
@@ -52,22 +65,26 @@ const Members = () => {
       setActionLoading(userId);
       await usersAPI.removeFromOrganization(userId);
       await loadMembers();
+      alert('Officer removed successfully!');
     } catch (error) {
-      console.error('Failed to remove member:', error);
-      alert('Failed to remove member from organization. Please try again.');
+      console.error('Failed to remove officer:', error);
+      alert(error.response?.data?.message || 'Failed to remove officer from organization. Please try again.');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const updateScanPermission = async (userId, canScan) => {
+  const toggleScanPermission = async (userId, canScan) => {
     try {
       setActionLoading(userId);
-      await usersAPI.updateScanPermission(userId, { can_scan: canScan });
+      await usersAPI.updateScanPermission(userId, { 
+        can_scan: !canScan 
+      });
       await loadMembers();
+      alert('Scan permission updated successfully!');
     } catch (error) {
       console.error('Failed to update scan permission:', error);
-      alert('Failed to update scan permission. Please try again.');
+      alert(error.response?.data?.message || 'Failed to update scan permission. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -77,14 +94,62 @@ const Members = () => {
     try {
       setActionLoading(userId);
       await usersAPI.generateQR(userId);
+      await loadMembers();
       alert('New QR code generated successfully!');
     } catch (error) {
       console.error('Failed to generate QR code:', error);
-      alert('Failed to generate QR code. Please try again.');
+      alert(error.response?.data?.message || 'Failed to generate QR code. Please try again.');
     } finally {
       setActionLoading(null);
     }
   };
+
+  // Filter and search functions
+  const filteredMembers = members.filter(member => {
+    const matchesSearch = 
+      member.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      member.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      member.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      member.student_id?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesSearch;
+  });
+
+  const filteredNonMembers = nonMembers.filter(user => {
+    return (
+      user.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.student_id?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
+
+  // Pagination functions for members
+  const membersStartIndex = (currentMembersPage - 1) * itemsPerPage;
+  const membersEndIndex = membersStartIndex + itemsPerPage;
+  const currentMembers = filteredMembers.slice(membersStartIndex, membersEndIndex);
+  const totalMembersPages = Math.ceil(filteredMembers.length / itemsPerPage);
+
+  // Pagination functions for non-members
+  const nonMembersStartIndex = (currentNonMembersPage - 1) * itemsPerPage;
+  const nonMembersEndIndex = nonMembersStartIndex + itemsPerPage;
+  const currentNonMembers = filteredNonMembers.slice(nonMembersStartIndex, nonMembersEndIndex);
+  const totalNonMembersPages = Math.ceil(filteredNonMembers.length / itemsPerPage);
+
+  // Pagination handlers
+  const handleMembersPageChange = (pageNumber) => {
+    setCurrentMembersPage(pageNumber);
+  };
+
+  const handleNonMembersPageChange = (pageNumber) => {
+    setCurrentNonMembersPage(pageNumber);
+  };
+
+  // Reset pagination when search changes
+  useEffect(() => {
+    setCurrentMembersPage(1);
+    setCurrentNonMembersPage(1);
+  }, [searchTerm]);
 
   if (!user?.is_officer) {
     return (
@@ -102,7 +167,7 @@ const Members = () => {
     return (
       <div className="members-loading">
         <div className="loading-spinner"></div>
-        <p>Loading members...</p>
+        <p>Loading officers...</p>
       </div>
     );
   }
@@ -112,13 +177,13 @@ const Members = () => {
       {/* Header Section */}
       <div className="page-header slide-up">
         <div className="header-content">
-          <h1>Organization Members</h1>
-          <p>Manage organization membership and QR scanning privileges</p>
+          <h1>Organization Officers</h1>
+          <p>Manage organization officers and scanning privileges</p>
         </div>
         <div className="header-stats">
           <div className="stat-badge">
             <span className="stat-number">{members.length}</span>
-            <span className="stat-label">Current Members</span>
+            <span className="stat-label">Current Officers</span>
           </div>
           <div className="stat-badge">
             <span className="stat-number">{nonMembers.length}</span>
@@ -128,171 +193,234 @@ const Members = () => {
             <span className="stat-number">
               {members.filter(m => m.can_scan).length}
             </span>
-            <span className="stat-label">QR Scanners</span>
+            <span className="stat-label">Can Scan</span>
           </div>
+        </div>
+      </div>
+
+      {/* Search and Filter Controls */}
+      <div className="table-controls slide-up" style={{ animationDelay: '0.1s' }}>
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="Search by name, email, or ID..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+            }}
+            className="search-input"
+          />
+          <span className="search-icon">🔍</span>
         </div>
       </div>
 
       <div className="members-sections">
-        {/* Current Members Section */}
-        <section className="members-section slide-up" style={{ animationDelay: '0.1s' }}>
+        {/* Current Officers Table */}
+        <section className="members-section slide-up" style={{ animationDelay: '0.2s' }}>
           <div className="section-header">
-            <h2>Current Members</h2>
-            <span className="section-count">{members.length} members</span>
+            <h2>Current Officers ({filteredMembers.length})</h2>
           </div>
           
-          {members.length === 0 ? (
+          {filteredMembers.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">👥</div>
-              <h3>No Members Yet</h3>
-              <p>Start by adding users from the available users section below.</p>
+              <div className="empty-icon"></div>
+              <h3>No Officers Found</h3>
+              <p>{searchTerm ? 'Try adjusting your search' : 'Start by adding users from available users below'}</p>
             </div>
           ) : (
-            <div className="members-grid">
-              {members.map(member => (
-                <div key={member.id} className="member-card">
-                  <div className="member-avatar">
-                    {member.first_name?.[0]}{member.last_name?.[0]}
+            <>
+              <div className="table-container">
+                <table className="members-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Student ID</th>
+                      <th>Email</th>
+                      <th>Scan Privilege</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentMembers.map(member => (
+                      <tr key={member.id} className="officer-row">
+                        <td>
+                          <div className="user-info">
+                            <div className="user-avatar">
+                              {member.first_name?.[0]}{member.last_name?.[0]}
+                            </div>
+                            <div className="user-details">
+                              <span className="user-name">{member.first_name} {member.last_name}</span>
+                              <span className="user-role">Officer</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{member.student_id}</td>
+                        <td>{member.email}</td>
+                        <td>
+                          <div className="scan-toggle">
+                            <button
+                              onClick={() => toggleScanPermission(member.id, !member.can_scan)}
+                              disabled={actionLoading === member.id}
+                              className={`toggle-btn ${member.can_scan ? 'active' : 'inactive'}`}
+                            >
+                              {actionLoading === member.id ? '...' : (member.can_scan ? '✅ Can Scan' : '❌ Cannot Scan')}
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="action-buttons">
+                            {/* Generate QR Code */}
+                            <button
+                              onClick={() => generateNewQR(member.id)}
+                              disabled={actionLoading === member.id}
+                              className="btn-secondary"
+                            >
+                              {actionLoading === member.id ? '...' : '🔄 QR Code'}
+                            </button>
+                            
+                            {/* Remove Officer */}
+                            <button
+                              onClick={() => removeFromOrganization(member.id)}
+                              disabled={actionLoading === member.id}
+                              className="btn-remove"
+                            >
+                              {actionLoading === member.id ? '...' : 'Remove'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Pagination for Members */}
+              {totalMembersPages > 1 && (
+                <div className="pagination">
+                  <button
+                    onClick={() => handleMembersPageChange(currentMembersPage - 1)}
+                    disabled={currentMembersPage === 1}
+                    className="pagination-btn"
+                  >
+                    Previous
+                  </button>
+                  
+                  <div className="pagination-numbers">
+                    {Array.from({ length: totalMembersPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => handleMembersPageChange(page)}
+                        className={`pagination-number ${currentMembersPage === page ? 'active' : ''}`}
+                      >
+                        {page}
+                      </button>
+                    ))}
                   </div>
                   
-                  <div className="member-info">
-                    <h3>{member.first_name} {member.last_name}</h3>
-                    <p className="member-email">{member.email}</p>
-                    <p className="member-id">ID: {member.student_id}</p>
-                    
-                    <div className="member-badges">
-                      <span className={`badge role ${member.is_officer ? 'officer' : 'member'}`}>
-                        {member.is_officer ? '👑 Officer' : '👤 Member'}
-                      </span>
-                      <span className={`badge scan ${member.can_scan ? 'scanner' : 'no-scan'}`}>
-                        {member.can_scan ? '📱 Scanner' : '👀 Viewer'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="member-actions">
-                    {/* Scan Permission Toggle */}
-                    <div className="toggle-group">
-                      <label className="toggle-label">QR Scanning</label>
-                      <button
-                        onClick={() => updateScanPermission(member.id, !member.can_scan)}
-                        disabled={actionLoading === member.id}
-                        className={`toggle-btn ${member.can_scan ? 'active' : 'inactive'}`}
-                      >
-                        {actionLoading === member.id ? '...' : (member.can_scan ? 'ON' : 'OFF')}
-                      </button>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="action-buttons">
-                      <button
-                        onClick={() => generateNewQR(member.id)}
-                        disabled={actionLoading === member.id}
-                        className="btn-secondary"
-                      >
-                        {actionLoading === member.id ? 'Generating...' : '🔄 QR Code'}
-                      </button>
-                      
-                      <button
-                        onClick={() => removeFromOrganization(member.id)}
-                        disabled={actionLoading === member.id}
-                        className="btn-danger"
-                      >
-                        {actionLoading === member.id ? 'Removing...' : 'Remove'}
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => handleMembersPageChange(currentMembersPage + 1)}
+                    disabled={currentMembersPage === totalMembersPages}
+                    className="pagination-btn"
+                  >
+                    Next
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </section>
 
-        {/* Available Users Section */}
-        <section className="members-section slide-up" style={{ animationDelay: '0.2s' }}>
+        {/* Available Users Table */}
+        <section className="members-section slide-up" style={{ animationDelay: '0.3s' }}>
           <div className="section-header">
-            <h2>Available Users</h2>
-            <span className="section-count">{nonMembers.length} users</span>
+            <h2>Available Users ({filteredNonMembers.length})</h2>
           </div>
 
-          {nonMembers.length === 0 ? (
+          {filteredNonMembers.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">✅</div>
               <h3>All Users Added</h3>
-              <p>All registered users are already organization members.</p>
+              <p>All registered users are already organization officers.</p>
             </div>
           ) : (
-            <div className="members-grid">
-              {nonMembers.map(user => (
-                <div key={user.id} className="member-card pending">
-                  <div className="member-avatar pending">
-                    {user.first_name?.[0]}{user.last_name?.[0]}
+            <>
+              <div className="table-container">
+                <table className="members-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Student ID</th>
+                      <th>Email</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentNonMembers.map(user => (
+                      <tr key={user.id} className="non-member-row">
+                        <td>
+                          <div className="user-info">
+                            <div className="user-avatar">
+                              {user.first_name?.[0]}{user.last_name?.[0]}
+                            </div>
+                            <div className="user-details">
+                              <span className="user-name">{user.first_name} {user.last_name}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{user.student_id}</td>
+                        <td>{user.email}</td>
+                        <td>
+                          <div className="add-buttons">
+                            <button
+                              onClick={() => addToOrganization(user.id)}
+                              disabled={actionLoading === user.id}
+                              className="btn-add-officer"
+                            >
+                              {actionLoading === user.id ? 'Adding...' : 'Add as Officer'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Pagination for Non-Members */}
+              {totalNonMembersPages > 1 && (
+                <div className="pagination">
+                  <button
+                    onClick={() => handleNonMembersPageChange(currentNonMembersPage - 1)}
+                    disabled={currentNonMembersPage === 1}
+                    className="pagination-btn"
+                  >
+                    Previous
+                  </button>
+                  
+                  <div className="pagination-numbers">
+                    {Array.from({ length: totalNonMembersPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => handleNonMembersPageChange(page)}
+                        className={`pagination-number ${currentNonMembersPage === page ? 'active' : ''}`}
+                      >
+                        {page}
+                      </button>
+                    ))}
                   </div>
                   
-                  <div className="member-info">
-                    <h3>{user.first_name} {user.last_name}</h3>
-                    <p className="member-email">{user.email}</p>
-                    <p className="member-id">ID: {user.student_id}</p>
-                    
-                    <div className="member-badges">
-                      <span className="badge pending">Pending Member</span>
-                      {user.is_officer && (
-                        <span className="badge officer">👑 Officer</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="member-actions">
-                    <div className="add-options">
-                      <p className="option-label">Add as:</p>
-                      <div className="option-buttons">
-                        <button
-                          onClick={() => addToOrganization(user.id, false)}
-                          disabled={actionLoading === user.id}
-                          className="btn-add-member"
-                        >
-                          {actionLoading === user.id ? 'Adding...' : '👤 Member'}
-                        </button>
-                        <button
-                          onClick={() => addToOrganization(user.id, true)}
-                          disabled={actionLoading === user.id}
-                          className="btn-add-scanner"
-                        >
-                          {actionLoading === user.id ? 'Adding...' : '📱 Scanner'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => handleNonMembersPageChange(currentNonMembersPage + 1)}
+                    disabled={currentNonMembersPage === totalNonMembersPages}
+                    className="pagination-btn"
+                  >
+                    Next
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </section>
-      </div>
-
-      {/* Quick Actions Footer */}
-      <div className="quick-actions-footer slide-up" style={{ animationDelay: '0.3s' }}>
-        <h3>Quick Actions</h3>
-        <div className="action-buttons-grid">
-          <button 
-            className="action-btn primary"
-            onClick={() => window.location.href = '/users?create=new'}
-          >
-            ➕ Create New User
-          </button>
-          <button 
-            className="action-btn secondary"
-            onClick={loadMembers}
-          >
-            🔄 Refresh List
-          </button>
-          <button 
-            className="action-btn info"
-            onClick={() => window.location.href = '/attendance'}
-          >
-            📱 Manage Scanners
-          </button>
-        </div>
       </div>
     </div>
   );

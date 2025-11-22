@@ -1,20 +1,20 @@
-/* src/components/Financial/Financial.css */
+/* Professional Green Theme Financial */
 :root {
-  --primary-green: #2E8B57;
-  --primary-dark: #1F6F42;
-  --primary-light: #3CB371;
-  --secondary-green: #90EE90;
-  --accent-green: #98FB98;
-  --background-light: #F8FFF8;
-  --text-dark: #2D3748;
-  --text-light: #4A5568;
-  --white: #FFFFFF;
-  --gray-light: #E2E8F0;
-  --danger: #E53E3E;
-  --warning: #DD6B20;
-  --success: #38A169;
-  --info: #3182CE;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --primary-green: #1b5e3f;
+  --primary-dark: #0d3b24;
+  --primary-light: #2d8659;
+  --secondary-green: #4db8a8;
+  --accent-green: #20c997;
+  --background-light: #f8faf9;
+  --text-dark: #1a1a1a;
+  --text-light: #666666;
+  --white: #ffffff;
+  --gray-light: #e0e7e1;
+  --danger: #d32f2f;
+  --warning: #ff9800;
+  --success: #27ae60;
+  --info: #17a2b8;
+  --shadow: 0 4px 12px rgba(27, 94, 63, 0.12);
 }
 
 .financial-page {
